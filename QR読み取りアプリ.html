@@ -3,80 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v5.9</title>
+    <title>点検スキャナー v6.1</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        /* デフォルトは白（ステップ1用） */
-        :root {
-            --bg-color: #f0f2f5;
-            --card-bg: #ffffff;
-            --text-color: #333333;
-            --input-bg: #ffffff;
-            --input-border: #dddddd;
-        }
-
-        /* ダークモード（ステップ2〜4用） */
-        body.dark-mode {
-            --bg-color: #121212;
-            --card-bg: #1e1e1e;
-            --text-color: #e0e0e0;
-            --input-bg: #2d2d2d;
-            --input-border: #444444;
-        }
-
+        :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; --input-bg: #ffffff; --input-border: #dddddd; }
+        body.dark-mode { --bg-color: #121212; --card-bg: #1e1e1e; --text-color: #e0e0e0; --input-bg: #2d2d2d; --input-border: #444444; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 10px; background: var(--bg-color); color: var(--text-color); transition: background 0.3s, color 0.3s; }
-        .card { background: var(--card-bg); padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); margin-bottom: 15px; transition: background 0.3s; }
+        .card { background: var(--card-bg); padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 15px; }
         #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; min-height: 180px; } 
-        
         .status-badge { display: inline-block; padding: 6px 15px; border-radius: 20px; background: #007bff; color: white; font-weight: bold; margin-bottom: 10px; }
-        .camera-controls { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
-        
-        input[type="number"], input[type="text"], select { 
-            width: 100%; height: 50px; padding: 10px; background: var(--input-bg); color: var(--text-color);
-            border: 2px solid var(--input-border); border-radius: 8px; box-sizing: border-box; font-size: 18px; margin-top: 5px; -webkit-appearance: none; 
-        }
-
+        input[type="number"], input[type="text"], select { width: 100%; height: 50px; padding: 10px; background: var(--input-bg); color: var(--text-color); border: 2px solid var(--input-border); border-radius: 8px; box-sizing: border-box; font-size: 18px; margin-top: 5px; -webkit-appearance: none; }
         .flex-container { display: flex; gap: 5px; width: 100%; margin-top: 5px; }
         .rom-input-box { flex: 1; min-width: 0; }
-        select.rom-input-box { flex: 1.2; }
-
-        button { width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; transition: opacity 0.2s; }
+        button { width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; }
         .btn-primary { background: #3b82f6; color: white; margin-top: 10px; }
         .btn-success { background: #22c55e; color: white; }
         .btn-danger { background: #ef4444; color: white; }
-        .btn-secondary { background: #4b5563; color: white; margin-top: 10px; }
-        .btn-skip { background: #6b7280; color: white; }
-        .btn-light-toggle { background: #eab308; color: #000; font-size: 14px; padding: 10px; }
-        
-        #toast { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(255,255,255,0.9); color: #000; padding: 20px 40px; border-radius: 50px; z-index: 10000; font-weight: bold; font-size: 1.2em; pointer-events: none; opacity: 0; transition: opacity 0.3s; }
-        
-        .history-table-container { margin-top: 20px; overflow-x: auto; background: var(--card-bg); border-radius: 8px; font-size: 0.75em; }
+        .btn-light-toggle { background: #eab308; color: #000; padding: 10px; margin-top:10px; }
+        .shop-list-container { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.85em; margin-top: 15px; background: #f8f9fa; padding: 10px; border-radius: 8px; color: #333; line-height: 1.6; }
+        .shop-group { border-left: 3px solid #007bff; padding-left: 8px; }
+        #toast { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(255,255,255,0.9); color: #000; padding: 20px 40px; border-radius: 50px; z-index: 10000; font-weight: bold; opacity: 0; transition: opacity 0.3s; }
+        .history-table-container { margin-top: 20px; overflow-x: auto; font-size: 0.75em; }
         table { width: 100%; border-collapse: collapse; }
-        th { background: rgba(128,128,128,0.1); padding: 8px; border: 1px solid var(--input-border); }
-        td { border: 1px solid var(--input-border); padding: 8px; text-align: center; }
-
+        th, td { border: 1px solid var(--input-border); padding: 8px; text-align: center; }
         #confirm-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 9999; justify-content: center; align-items: center; }
-        #confirm-modal { background: var(--card-bg); width: 90%; padding: 25px; border-radius: 20px; text-align: center; border: 1px solid var(--input-border); }
-        .scanned-value { font-size: 30px; font-weight: bold; color: #ff4500; margin: 15px 0; word-break: break-all; }
+        #confirm-modal { background: var(--card-bg); width: 90%; padding: 25px; border-radius: 20px; text-align: center; }
+        @keyframes highlight { from { background-color: #d4edda; } to { background-color: transparent; } }
+        .new-row { animation: highlight 1.5s ease-out; }
     </style>
 </head>
 <body id="body">
-
     <div id="toast">登録完了</div>
-
     <div id="confirm-overlay">
         <div id="confirm-modal">
-            <div id="scanned-display" class="scanned-value">----</div>
+            <div id="scanned-display" style="font-size:30px; font-weight:bold; color:#ff4500; margin-bottom:15px;">----</div>
             <button class="btn-success" onclick="approveValue()">OK</button>
             <button class="btn-danger" onclick="rejectValue()" style="margin-top:10px;">やり直し</button>
         </div>
     </div>
 
     <div id="setup-screen" class="card">
-        <h3 style="margin-top:0;">初期設定</h3>
-        <input type="number" id="staff-id" pattern="\d*" inputmode="numeric" placeholder="社員番号">
-        <input type="number" id="shop-id" pattern="\d*" inputmode="numeric" placeholder="店舗番号">
+        <h3 style="margin:0 0 15px 0;">初期設定</h3>
+        <label style="font-size:0.8em; font-weight:bold;">社員番号 (5桁)</label>
+        <input type="number" id="staff-id" pattern="\d*" inputmode="numeric" placeholder="例: 12345" oninput="if(value.length>5)value=value.slice(0,5)">
+        <label style="font-size:0.8em; font-weight:bold; margin-top:10px; display:block;">店舗番号 (2桁)</label>
+        <input type="number" id="shop-id" pattern="\d*" inputmode="numeric" placeholder="例: 01" oninput="if(value.length>2)value=value.slice(0,2)">
         <button class="btn-primary" onclick="startApp()">点検開始</button>
+        <div class="shop-list-container">
+            <div class="shop-group">01 成田<br>09 潮来<br>16 木更津<br>18 神栖<br>20 多古<br>22 葉山<br>23 鹿嶋2<br>28 八日市場<br>34 奥野谷<br>43 大和<br>44 淵野辺</div>
+            <div class="shop-group">13 小見川<br>25 鹿嶋1<br>26 旭<br>27 八街<br>29 東金<br>30 富里<br>31 文違<br>32 今宮<br>33 市原<br>35 松戸<br>36 石岡<br>37 稲毛<br>38 佐原<br>39 川越<br>40 町田<br>41 セン南<br>45 ウイング</div>
+        </div>
     </div>
 
     <div id="main-app" style="display:none;">
@@ -85,25 +61,22 @@
                 <div id="status" class="status-badge">① 台番号スキャン</div>
                 <div id="counter-badge" style="font-size:0.8em; font-weight:bold;">計: 0台</div>
             </div>
-            
             <div id="reader-container">
                 <div id="reader"></div>
+                <button id="torch-button" class="btn-light-toggle" onclick="toggleTorch()">🔦 ライト ON/OFF</button>
                 <div class="camera-controls">
-                    <button id="torch-button" class="btn-light-toggle" onclick="toggleTorch()">🔦 ライト ON/OFF</button>
-                    <button id="btn-skip" class="btn-skip" style="display:none;" onclick="skipMainBoard()">主基板なしで次へ</button>
+                    <button id="btn-skip" class="btn-secondary" style="display:none;" onclick="skipMainBoard()">主基板なしで次へ</button>
                     <button id="btn-finish" class="btn-success" style="display:none;" onclick="finishMachine()">封印終了 ➔ 登録して次へ</button>
                 </div>
             </div>
-
             <div id="normal-input-area" style="margin-top:15px;">
                 <input type="text" id="manual-input" placeholder="手入力確定用">
                 <button class="btn-primary" onclick="handleManualInput()">確定</button>
             </div>
-
             <div id="rom-input-area" style="display:none; margin-top:15px;">
                 <div class="flex-container">
                     <input type="number" id="rom-1" class="rom-input-box" pattern="\d*" inputmode="numeric" onfocus="this.select(); this.setSelectionRange(0, 9999);">
-                    <select id="rom-select" class="rom-input-box" onchange="toggleRomAlpha()">
+                    <select id="rom-select" class="rom-input-box" onchange="toggleRomAlpha()" style="flex:1.2;">
                         <option value="KY">KY</option><option value="EAI">EAI</option><option value="OTHER">他</option>
                     </select>
                     <input type="text" id="rom-2-custom" class="rom-input-box" style="display:none; text-transform:uppercase;" onfocus="this.select();">
@@ -111,14 +84,10 @@
                 </div>
                 <button class="btn-primary" onclick="handleManualInput()">ROM確定</button>
             </div>
-
-            <button id="btn-back" class="btn-secondary" style="display:none;" onclick="goBack()">前へ戻る</button>
+            <button id="btn-back" class="btn-secondary" style="display:none; margin-top:10px;" onclick="goBack()">前へ戻る</button>
             <div id="seal-display" style="display:none; margin-top:10px; background:rgba(128,128,128,0.1); padding:10px; border-radius:5px; font-size:0.8em;">スキャン中: <strong id="current-seals">（なし）</strong></div>
         </div>
-
-        <div class="card history-table-container">
-            <table><thead><tr><th>台番</th><th>主</th><th>ROM</th><th>封印</th></tr></thead><tbody id="history-tbody"></tbody></table>
-        </div>
+        <div class="card history-table-container"><table><thead><tr><th>台番</th><th>主</th><th>ROM</th><th>封印</th></tr></thead><tbody id="history-tbody"></tbody></table></div>
         <button style="background:#333; color:white; margin-top:10px;" onclick="downloadCSV()">CSV保存</button>
     </div>
 
@@ -131,8 +100,7 @@
             if(!staffId || !shopId) return alert("番号を入力してください");
             document.getElementById('setup-screen').style.display = 'none';
             document.getElementById('main-app').style.display = 'block';
-            updateTheme();
-            initScanner();
+            updateTheme(); initScanner();
         }
 
         function updateTheme() {
@@ -169,6 +137,7 @@
                 let r2 = (sel.style.display === "none") ? custom.value.toUpperCase() : sel.value;
                 const r3 = document.getElementById('rom-3').value;
                 if(r1 && r2 && r3) { lastRom1 = r1; lastRom2 = r2; lastRom3 = r3; showConfirmation(r1+r2+r3); }
+                else { alert("ROM番号を入力してください"); }
             } else {
                 const val = document.getElementById('manual-input').value;
                 if(val) { showConfirmation(val); document.getElementById('manual-input').value = ""; }
@@ -193,7 +162,7 @@
             } else if(currentStep === 2) {
                 currentData.mainBoardId = v;
                 document.getElementById('status').innerText = "③ ROM入力";
-                document.getElementById('normal-input-area', 'btn-skip').forEach(id => { if(document.getElementById(id)) document.getElementById(id).style.display = 'none'; });
+                document.getElementById('normal-input-area').style.display = 'none';
                 document.getElementById('btn-skip').style.display = 'none';
                 document.getElementById('rom-input-area').style.display = 'block';
                 document.getElementById('reader-container').style.display = 'none';
@@ -231,27 +200,20 @@
             document.getElementById('counter-badge').innerText = `計: ${allData.length}台`;
             showToast();
             currentStep = 1; document.getElementById('status').innerText = "① 台番号スキャン";
-            document.getElementById('btn-finish').style.display = 'none';
-            document.getElementById('btn-back').style.display = 'none';
-            document.getElementById('seal-display').style.display = 'none';
-            document.getElementById('rom-input-area').style.display = 'none';
+            ['btn-finish', 'btn-back', 'seal-display', 'rom-input-area'].forEach(id => document.getElementById(id).style.display = 'none');
             document.getElementById('normal-input-area').style.display = 'block';
             document.getElementById('reader-container').style.display = 'block';
-            updateTheme();
-            html5QrCode.resume();
+            updateTheme(); html5QrCode.resume();
         }
 
         function goBack() {
             if(currentStep === 2) {
                 currentStep = 1; document.getElementById('status').innerText = "① 台番号スキャン";
-                document.getElementById('btn-back').style.display = 'none';
-                document.getElementById('btn-skip').style.display = 'none';
+                document.getElementById('btn-back').style.display = 'none'; document.getElementById('btn-skip').style.display = 'none';
             } else if(currentStep === 3) {
                 currentStep = 2; document.getElementById('status').innerText = "② 主基板スキャン";
                 document.getElementById('rom-input-area').style.display = 'none';
-                document.getElementById('normal-input-area').style.display = 'block';
-                document.getElementById('reader-container').style.display = 'block';
-                document.getElementById('btn-skip').style.display = 'block';
+                document.getElementById('normal-input-area').style.display = 'block'; document.getElementById('reader-container').style.display = 'block'; document.getElementById('btn-skip').style.display = 'block';
                 html5QrCode.resume();
             }
             updateTheme();
