@@ -3,42 +3,42 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v8.9</title>
+    <title>点検スキャナー v9.0</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; --input-bg: #ffffff; --input-border: #dddddd; }
-        body { font-family: sans-serif; margin: 0; padding: 10px; background: var(--bg-color); color: var(--text-color); }
-        .card { background: var(--card-bg); padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 15px; }
+        body { font-family: sans-serif; margin: 0; padding: 8px; background: var(--bg-color); color: var(--text-color); }
+        .card { background: var(--card-bg); padding: 12px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 10px; }
         
-        /* カメラ領域を70%程度に縮小 */
-        #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; min-height: 120px; } 
+        /* カメラ領域をさらに縮小（30%程度） */
+        #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; min-height: 80px; } 
+        #reader video { object-fit: cover; } /* 狭い領域でも中央が見えるように調整 */
         
-        .status-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-        .status-badge { padding: 6px 15px; border-radius: 20px; background: #007bff; color: white; font-weight: bold; }
-        .btn-reload-cam { padding: 8px 15px; border-radius: 8px; background: #ff9800; color: white; font-size: 14px; border: none; cursor: pointer; font-weight: bold; }
+        .status-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+        .status-badge { padding: 4px 12px; border-radius: 20px; background: #007bff; color: white; font-weight: bold; font-size: 14px; }
+        .btn-reload-cam { padding: 6px 12px; border-radius: 8px; background: #ff9800; color: white; font-size: 12px; border: none; font-weight: bold; }
         
-        input, select { width: 100%; height: 50px; padding: 10px; background: var(--input-bg); color: var(--text-color); border: 2px solid var(--input-border); border-radius: 8px; box-sizing: border-box; font-size: 18px; margin-top: 5px; }
-        button { width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; margin-top: 10px; }
+        input, select { width: 100%; height: 45px; padding: 8px; background: var(--input-bg); color: var(--text-color); border: 2px solid var(--input-border); border-radius: 8px; box-sizing: border-box; font-size: 18px; margin-top: 5px; }
+        button { width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; margin-top: 8px; }
         
         .btn-primary { background: #3b82f6; color: white; }
         .btn-success { background: #22c55e; color: white; }
         .btn-danger { background: #ef4444; color: white; }
-        .btn-ai { background: #8b5cf6; color: white; display: none; }
+        .btn-ai { background: #8b5cf6; color: white; display: none; margin-top: 5px; padding: 8px; }
         .btn-secondary { background: #4b5563; color: white; }
         
-        /* CSVボタンを普通のボタンとして下部に配置 */
         .btn-csv { background: #10b981; color: white; margin: 20px 0; }
         
-        .shop-name-display { color: #007bff; font-weight: bold; margin-top: 10px; font-size: 1.1em; background: #e7f1ff; padding: 12px; border-radius: 8px; text-align: center; border: 1px solid #b3d7ff; }
-        .shop-list-container { margin-top: 25px; padding-top: 15px; border-top: 2px dashed #ddd; }
+        .shop-name-display { color: #007bff; font-weight: bold; margin-top: 8px; font-size: 1em; background: #e7f1ff; padding: 10px; border-radius: 8px; text-align: center; }
+        .shop-list-container { margin-top: 20px; padding-top: 15px; border-top: 2px dashed #ddd; }
         .shop-list-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
-        .shop-item { background: #fff; padding: 8px; border-radius: 6px; border: 1px solid #eee; font-size: 13px; color: #555; }
+        .shop-item { background: #fff; padding: 6px; border-radius: 6px; border: 1px solid #eee; font-size: 12px; color: #555; }
 
         #confirm-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; }
-        #confirm-modal { background: var(--card-bg); width: 90%; padding: 25px; border-radius: 20px; text-align: center; }
+        #confirm-modal { background: var(--card-bg); width: 90%; padding: 20px; border-radius: 20px; text-align: center; }
         table { width: 100%; border-collapse: collapse; font-size: 0.8em; margin-top: 10px; }
-        th, td { border-bottom: 1px solid var(--input-border); padding: 8px; text-align: left; }
-        .seal-tag { display: inline-block; background: #e2e8f0; padding: 4px 10px; border-radius: 4px; margin: 4px; font-size: 14px; font-weight: bold; border: 1px solid #cbd5e1; }
+        th, td { border-bottom: 1px solid var(--input-border); padding: 6px; text-align: left; }
+        .seal-tag { display: inline-block; background: #e2e8f0; padding: 3px 8px; border-radius: 4px; margin: 3px; font-size: 13px; font-weight: bold; border: 1px solid #cbd5e1; }
     </style>
 </head>
 <body>
@@ -56,14 +56,13 @@
 
     <div id="setup-screen" class="card">
         <h3>初期設定</h3>
-        <label>Gemini APIキー (任意)</label>
-        <input type="password" id="gemini-key">
+        <input type="password" id="gemini-key" placeholder="Gemini APIキー (任意)">
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)" oninput="if(value.length>5)value=value.slice(0,5)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName(); if(value.length>2)value=value.slice(0,2)">
         <div id="shop-name" class="shop-name-display">店舗を選択してください</div>
         <button class="btn-primary" onclick="startApp()">点検開始</button>
         <div class="shop-list-container">
-            <div style="font-weight:bold; margin-bottom:10px; font-size: 14px;">【店舗番号一覧】</div>
+            <div style="font-weight:bold; margin-bottom:8px; font-size: 13px;">【店舗番号一覧】</div>
             <div class="shop-list-grid" id="display-shop-list"></div>
         </div>
     </div>
@@ -77,17 +76,17 @@
             
             <div id="reader-container">
                 <div id="reader"></div>
-                <button id="btn-skip" class="btn-secondary" style="display:none;" onclick="skipStep()">主基板なし/封印なし</button>
-                <button class="btn-ai" id="ai-btn" onclick="captureAndOCR()">📸 AI読取</button>
+                <button id="btn-skip" class="btn-secondary" style="display:none; padding: 10px;" onclick="skipStep()">主基板なし/封印なし</button>
+                <button class="btn-ai" id="ai-btn" onclick="captureAndOCR()">📸 AI数字読取</button>
             </div>
             
-            <div id="normal-input-area" style="margin-top:10px;">
+            <div id="normal-input-area" style="margin-top:8px;">
                 <input type="number" inputmode="numeric" pattern="[0-9]*" id="manual-input" placeholder="手入力確定">
-                <button class="btn-primary" onclick="handleManualInput()">確定</button>
+                <button class="btn-primary" style="padding: 10px;" onclick="handleManualInput()">確定</button>
             </div>
 
-            <div id="rom-input-area" style="display:none; margin-top:10px;">
-                <div style="display:flex; gap:5px;">
+            <div id="rom-input-area" style="display:none; margin-top:8px;">
+                <div style="display:flex; gap:4px;">
                     <input type="number" inputmode="numeric" pattern="[0-9]*" id="rom-1" style="flex:1;" placeholder="数字" onclick="this.select();" onfocus="this.select();">
                     <select id="rom-select" style="flex:1;"><option value="KY">KY</option><option value="EAI">EAI</option></select>
                     <input type="number" inputmode="numeric" pattern="[0-9]*" id="rom-3" style="flex:1;" placeholder="数字" onclick="this.select();" onfocus="this.select();">
@@ -95,10 +94,10 @@
                 <button class="btn-primary" onclick="handleManualInput()">ROM確定</button>
             </div>
 
-            <div id="seal-list-display" style="margin-top:10px; min-height: 20px;"></div>
+            <div id="seal-list-display" style="margin-top:5px;"></div>
 
             <button id="btn-finish" class="btn-success" style="display:none;" onclick="finishMachine()">登録して次の台へ</button>
-            <button id="btn-back" class="btn-secondary" style="display:none;" onclick="goBack()">前へ戻る</button>
+            <button id="btn-back" class="btn-secondary" style="display:none; padding: 10px;" onclick="goBack()">前へ戻る</button>
         </div>
 
         <div class="card" style="overflow-x:auto;">
@@ -153,7 +152,8 @@
 
         function startScanner() {
             html5QrCode = new Html5Qrcode("reader");
-            html5QrCode.start({ facingMode: "environment" }, { fps: 20, aspectRatio: 1.0 }, (text) => {
+            // 縦幅を抑えるために設定を調整
+            html5QrCode.start({ facingMode: "environment" }, { fps: 20, aspectRatio: 2.0 }, (text) => {
                 html5QrCode.pause(); showConfirmation(text);
             }).catch(err => console.error(err));
         }
