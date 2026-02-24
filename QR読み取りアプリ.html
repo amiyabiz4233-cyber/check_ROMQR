@@ -3,41 +3,39 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v7.0 AI</title>
+    <title>点検スキャナー v7.1</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; --input-bg: #ffffff; --input-border: #dddddd; }
         body.dark-mode { --bg-color: #121212; --card-bg: #1e1e1e; --text-color: #e0e0e0; --input-bg: #2d2d2d; --input-border: #444444; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 10px; background: var(--bg-color); color: var(--text-color); transition: background 0.3s, color 0.3s; }
         .card { background: var(--card-bg); padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 15px; }
-        #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; min-height: 180px; position: relative; } 
+        #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; min-height: 180px; } 
         .status-badge { display: inline-block; padding: 6px 15px; border-radius: 20px; background: #007bff; color: white; font-weight: bold; margin-bottom: 10px; }
         input[type="number"], input[type="text"], input[type="password"], select { width: 100%; height: 50px; padding: 10px; background: var(--input-bg); color: var(--text-color); border: 2px solid var(--input-border); border-radius: 8px; box-sizing: border-box; font-size: 18px; margin-top: 5px; -webkit-appearance: none; }
-        .flex-container { display: flex; gap: 5px; width: 100%; margin-top: 5px; }
-        button { width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; transition: 0.2s; }
-        .btn-primary { background: #3b82f6; color: white; margin-top: 10px; }
+        button { width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; margin-top: 10px; }
+        .btn-primary { background: #3b82f6; color: white; }
         .btn-success { background: #22c55e; color: white; }
         .btn-danger { background: #ef4444; color: white; }
-        .btn-ai { background: #8b5cf6; color: white; } /* AI用は紫 */
-        .btn-light-toggle { background: #eab308; color: #000; padding: 10px; margin-top:10px; }
-        .shop-list-container { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.8em; margin-top: 15px; background: rgba(128,128,128,0.1); padding: 10px; border-radius: 8px; line-height: 1.4; }
-        #toast { display: none; position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: rgba(255,255,255,0.9); color: #000; padding: 20px 40px; border-radius: 50px; z-index: 10000; font-weight: bold; opacity: 0; transition: opacity 0.3s; }
-        #confirm-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.85); z-index: 9999; justify-content: center; align-items: center; }
+        .btn-ai { background: #8b5cf6; color: white; }
+        .btn-secondary { background: #4b5563; color: white; }
+        .shop-list-container { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 0.75em; margin-top: 15px; background: rgba(128,128,128,0.1); padding: 10px; border-radius: 8px; }
+        #confirm-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; }
         #confirm-modal { background: var(--card-bg); width: 90%; padding: 25px; border-radius: 20px; text-align: center; }
-        .loading-spinner { display: none; border: 4px solid #f3f3f3; border-top: 4px solid #8b5cf6; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 10px auto; }
+        .loading-spinner { display: none; border: 4px solid #f3f3f3; border-top: 4px solid #8b5cf6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body id="body">
-    <div id="toast">登録完了</div>
-
-    <div id="confirm-overlay" style="z-index: 10001;">
+    <div id="confirm-overlay">
         <div id="confirm-modal">
-            <div id="ai-loading-text" style="display:none;">AIが文字を解析中...<div class="loading-spinner" style="display:block;"></div></div>
-            <div id="scanned-content">
-                <div id="scanned-display" style="font-size:30px; font-weight:bold; color:#ff4500; margin-bottom:15px;">----</div>
-                <button class="btn-success" onclick="approveValue()">OK</button>
-                <button class="btn-danger" onclick="rejectValue()" style="margin-top:10px;">やり直し</button>
+            <div id="ai-status-area">
+                <div id="ai-loading-text" style="display:none;">AI解析中...<div class="loading-spinner" style="display:block;"></div></div>
+                <div id="ai-result-area">
+                    <div id="scanned-display" style="font-size:32px; font-weight:bold; color:#ff4500; margin-bottom:20px;">----</div>
+                    <button class="btn-success" onclick="approveValue()">OK</button>
+                    <button class="btn-danger" onclick="rejectValue()">やり直し / QRに戻る</button>
+                </div>
             </div>
         </div>
     </div>
@@ -58,136 +56,93 @@
         <div class="card">
             <div style="display:flex; justify-content:space-between; align-items:center;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
-                <div id="counter-badge" style="font-size:0.8em; font-weight:bold;">計: 0台</div>
+                <div id="counter-badge" style="font-weight:bold;">計: 0台</div>
             </div>
-
             <div id="reader-container">
                 <div id="reader"></div>
-                <button id="torch-button" class="btn-light-toggle" onclick="toggleTorch()">🔦 ライト ON/OFF</button>
-                <button id="ai-capture-btn" class="btn-ai" style="display:none; margin-top:10px;" onclick="captureAndOCR()">📸 映っている数字をAIで読む</button>
+                <button class="btn-ai" id="ai-btn" onclick="captureAndOCR()">📸 AIで数字を読み取る</button>
             </div>
-
-            <div id="normal-input-area" style="margin-top:15px;">
-                <input type="text" id="manual-input" placeholder="手入力はこちら">
-                <button class="btn-primary" onclick="handleManualInput()">確定</button>
+            <div id="normal-input-area" style="margin-top:10px;">
+                <input type="text" id="manual-input" placeholder="手入力確定用">
+                <button class="btn-primary" onclick="handleManualInput()">手入力で確定</button>
             </div>
-
-            <div id="rom-input-area" style="display:none; margin-top:15px;">
-                <div class="flex-container">
-                    <input type="number" id="rom-1" class="rom-input-box" pattern="\d*" inputmode="numeric" onfocus="this.select();">
-                    <select id="rom-select" onchange="toggleRomAlpha()"><option value="KY">KY</option><option value="EAI">EAI</option><option value="OTHER">他</option></select>
-                    <input type="text" id="rom-2-custom" class="rom-input-box" style="display:none;" onfocus="this.select();">
-                    <input type="number" id="rom-3" class="rom-input-box" pattern="\d*" inputmode="numeric" onfocus="this.select();">
+            <div id="rom-input-area" style="display:none; margin-top:10px;">
+                <div style="display:flex; gap:5px;">
+                    <input type="number" id="rom-1" style="flex:1;" placeholder="数字" onfocus="this.select();">
+                    <select id="rom-select" style="flex:1;"><option value="KY">KY</option><option value="EAI">EAI</option><option value="OTHER">他</option></select>
+                    <input type="number" id="rom-3" style="flex:1;" placeholder="数字" onfocus="this.select();">
                 </div>
                 <button class="btn-primary" onclick="handleManualInput()">ROM確定</button>
             </div>
-
-            <div class="camera-controls">
-                <button id="btn-skip" class="btn-secondary" style="display:none; margin-top:10px;" onclick="skipMainBoard()">主基板なしで次へ</button>
-                <button id="btn-finish" class="btn-success" style="display:none; margin-top:10px;" onclick="finishMachine()">封印終了 ➔ 登録して次へ</button>
-                <button id="btn-back" class="btn-secondary" style="display:none; margin-top:10px;" onclick="goBack()">前へ戻る</button>
-            </div>
-            <div id="seal-display" style="display:none; margin-top:10px; font-size:0.8em;">スキャン中: <strong id="current-seals">（なし）</strong></div>
+            <button id="btn-skip" class="btn-secondary" style="display:none;" onclick="skipMainBoard()">主基板なしで次へ</button>
+            <button id="btn-finish" class="btn-success" style="display:none;" onclick="finishMachine()">登録して次の台へ</button>
+            <button id="btn-back" class="btn-secondary" style="display:none;" onclick="goBack()">前へ戻る</button>
+            <div id="seal-display" style="display:none; margin-top:10px; font-size:0.8em;">封印: <strong id="current-seals">なし</strong></div>
         </div>
-        <div class="card history-table-container"><table style="width:100%; border-collapse:collapse; font-size:0.7em;"><thead><tr><th>台番</th><th>主</th><th>ROM</th><th>封印</th></tr></thead><tbody id="history-tbody"></tbody></table></div>
-        <button style="background:#333; color:white; margin-top:10px;" onclick="downloadCSV()">CSV保存</button>
+        <div class="card history-table-container"><table><thead><tr><th>台番</th><th>主</th><th>ROM</th><th>封印</th></tr></thead><tbody id="history-tbody"></tbody></table></div>
+        <button class="btn-secondary" onclick="downloadCSV()">CSV保存</button>
     </div>
 
     <script>
-        let staffId, shopId, geminiKey, currentStep = 1, currentData = {}, tempSeals = [], allData = [], html5QrCode, isTorchOn = false, pendingValue = "";
-        let audioCtx = null;
-        let lastRom1 = "", lastRom2 = "KY", lastRom3 = "";
+        let staffId, shopId, geminiKey, currentStep = 1, currentData = {}, tempSeals = [], allData = [], html5QrCode, pendingValue = "";
+        let lastRom1 = "", lastRom3 = "";
 
-        function playBeep() {
-            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-            const osc = audioCtx.createOscillator();
-            const gain = audioCtx.createGain();
-            osc.connect(gain); gain.connect(audioCtx.destination);
-            osc.frequency.setValueAtTime(880, audioCtx.currentTime);
-            gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
-            osc.start(); osc.stop(audioCtx.currentTime + 0.1);
-        }
+        // キーの自動復元
+        window.onload = () => {
+            const savedKey = localStorage.getItem('gemini_api_key');
+            if (savedKey) document.getElementById('gemini-key').value = savedKey;
+        };
 
         function startApp() {
             staffId = document.getElementById('staff-id').value;
             shopId = document.getElementById('shop-id').value;
-            geminiKey = document.getElementById('gemini-key').value;
-            if(!staffId || !shopId) return alert("社員番号と店舗番号を入力してください");
+            geminiKey = document.getElementById('gemini-key').value.trim();
+            if(!staffId || !shopId || !geminiKey) return alert("すべて入力してください");
+            localStorage.setItem('gemini_api_key', geminiKey);
             document.getElementById('setup-screen').style.display = 'none';
             document.getElementById('main-app').style.display = 'block';
-            if (currentStep === 1) document.getElementById('ai-capture-btn').style.display = 'block';
-            updateTheme(); initScanner();
-        }
-
-        function updateTheme() {
-            document.getElementById('body').classList.toggle('dark-mode', currentStep !== 1);
+            updateUI(); initScanner();
         }
 
         function initScanner() {
             if(html5QrCode) html5QrCode.clear();
             html5QrCode = new Html5Qrcode("reader");
-            html5QrCode.start({ facingMode: "environment" }, { fps: 25, aspectRatio: 1.0 }, onScanSuccess);
+            html5QrCode.start({ facingMode: "environment" }, { fps: 20, aspectRatio: 1.0 }, (text) => {
+                if (navigator.vibrate) navigator.vibrate(80);
+                html5QrCode.pause();
+                showConfirmation(text);
+            });
         }
 
-        function onScanSuccess(text) {
-            playBeep();
-            if (navigator.vibrate) navigator.vibrate(80);
-            html5QrCode.pause();
-            showConfirmation(text);
-        }
-
-        // --- Gemini AI OCR 機能 ---
         async function captureAndOCR() {
-            if(!geminiKey) return alert("APIキーが未入力です。初期設定画面で入力してください。");
-            
-            // 画面キャプチャ
             const video = document.querySelector('#reader video');
-            const canvas = document.createElement('canvas');
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            canvas.getContext('2d').drawImage(video, 0, 0);
-            const base64Image = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
-
-            // UI変更
+            if(!video) return alert("カメラが起動していません");
+            
+            html5QrCode.pause();
             document.getElementById('confirm-overlay').style.display = 'flex';
             document.getElementById('ai-loading-text').style.display = 'block';
-            document.getElementById('scanned-content').style.display = 'none';
+            document.getElementById('ai-result-area').style.display = 'none';
 
             try {
+                const canvas = document.createElement('canvas');
+                canvas.width = video.videoWidth; canvas.height = video.videoHeight;
+                canvas.getContext('2d').drawImage(video, 0, 0);
+                const base64Image = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
+
                 const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        contents: [{
-                            parts: [
-                                { text: "この画像に写っている「パチンコ・パチスロ台の台番号」を1つだけ探し、その数字のみを回答してください。余計な文字は一切不要です。" },
-                                { inline_data: { mime_type: "image/jpeg", data: base64Image } }
-                            ]
-                        }]
-                    })
+                    body: JSON.stringify({ contents: [{ parts: [{ text: "画像内の数字（パチンコ台番号）を1つだけ抽出し数字のみ回答せよ" }, { inline_data: { mime_type: "image/jpeg", data: base64Image } }] }] })
                 });
                 const data = await response.json();
-                const aiResult = data.candidates[0].content.parts[0].text.trim().replace(/\D/g, ""); // 数字以外除去
+                const aiResult = data.candidates[0].content.parts[0].text.trim().replace(/\D/g, "");
                 
                 document.getElementById('ai-loading-text').style.display = 'none';
-                document.getElementById('scanned-content').style.display = 'block';
-                showConfirmation(aiResult || "読み取れませんでした");
+                document.getElementById('ai-result-area').style.display = 'block';
+                showConfirmation(aiResult || "読取不可");
             } catch (e) {
-                alert("AI連携エラー: " + e);
+                alert("AIエラー: " + e);
                 rejectValue();
-            }
-        }
-
-        function handleManualInput() {
-            if (currentStep === 3) {
-                const r1 = document.getElementById('rom-1').value;
-                const sel = document.getElementById('rom-select');
-                const r2 = (sel.style.display === "none") ? document.getElementById('rom-2-custom').value.toUpperCase() : sel.value;
-                const r3 = document.getElementById('rom-3').value;
-                if(r1 && r2 && r3) { lastRom1 = r1; lastRom2 = r2; lastRom3 = r3; showConfirmation(r1+r2+r3); }
-            } else {
-                const val = document.getElementById('manual-input').value;
-                if(val) { showConfirmation(val); document.getElementById('manual-input').value = ""; }
             }
         }
 
@@ -195,79 +150,103 @@
             pendingValue = value;
             document.getElementById('scanned-display').innerText = value;
             document.getElementById('confirm-overlay').style.display = 'flex';
+            document.getElementById('ai-result-area').style.display = 'block';
         }
 
         function approveValue() {
             document.getElementById('confirm-overlay').style.display = 'none';
             if(currentStep === 1) {
                 currentData = { staffId, shopId, time: new Date().toLocaleTimeString('ja-JP'), machineId: pendingValue };
-                document.getElementById('status').innerText = "② 主基板スキャン";
-                document.getElementById('ai-capture-btn').style.display = 'none'; // ステップ2以降はAI不要
-                document.getElementById('btn-back').style.display = 'block';
-                document.getElementById('btn-skip').style.display = 'block';
-                currentStep = 2; updateTheme(); html5QrCode.resume();
+                currentStep = 2;
             } else if(currentStep === 2) {
                 currentData.mainBoardId = pendingValue;
-                document.getElementById('status').innerText = "③ ROM入力";
-                document.getElementById('normal-input-area').style.display = 'none';
-                document.getElementById('rom-input-area').style.display = 'block';
-                document.getElementById('reader-container').style.display = 'none';
-                document.getElementById('rom-1').value = lastRom1;
-                document.getElementById('rom-3').value = lastRom3;
-                currentStep = 3; updateTheme();
+                currentStep = 3;
             } else if(currentStep === 3) {
                 currentData.romId = pendingValue;
-                document.getElementById('status').innerText = "④ 封印スキャン";
-                document.getElementById('rom-input-area').style.display = 'none';
-                document.getElementById('normal-input-area').style.display = 'block';
-                document.getElementById('reader-container').style.display = 'block';
-                document.getElementById('btn-finish').style.display = 'block';
-                document.getElementById('seal-display').style.display = 'block';
-                currentStep = 4; tempSeals = []; updateTheme(); html5QrCode.resume();
+                currentStep = 4;
+                tempSeals = [];
             } else if(currentStep === 4) {
-                if(!tempSeals.includes(pendingValue)) {
-                    tempSeals.push(pendingValue);
-                    document.getElementById('current-seals').innerText = tempSeals.join(', ');
-                }
-                html5QrCode.resume();
+                if(!tempSeals.includes(pendingValue)) tempSeals.push(pendingValue);
+                document.getElementById('current-seals').innerText = tempSeals.join(', ');
             }
+            updateUI();
+            if(currentStep !== 3) html5QrCode.resume();
         }
 
         function rejectValue() {
             document.getElementById('confirm-overlay').style.display = 'none';
-            if(currentStep !== 3) html5QrCode.resume();
+            html5QrCode.resume();
         }
+
+        function updateUI() {
+            const body = document.getElementById('body');
+            const status = document.getElementById('status');
+            body.classList.toggle('dark-mode', currentStep !== 1);
+            
+            // 全ボタン一旦非表示
+            document.getElementById('ai-btn').style.display = 'none';
+            document.getElementById('btn-skip').style.display = 'none';
+            document.getElementById('btn-finish').style.display = 'none';
+            document.getElementById('btn-back').style.display = (currentStep > 1) ? 'block' : 'none';
+            document.getElementById('rom-input-area').style.display = 'none';
+            document.getElementById('normal-input-area').style.display = 'block';
+            document.getElementById('reader-container').style.display = 'block';
+            document.getElementById('seal-display').style.display = 'none';
+
+            if(currentStep === 1) {
+                status.innerText = "① 台番号スキャン";
+                document.getElementById('ai-btn').style.display = 'block';
+            } else if(currentStep === 2) {
+                status.innerText = "② 主基板スキャン";
+                document.getElementById('btn-skip').style.display = 'block';
+            } else if(currentStep === 3) {
+                status.innerText = "③ ROM入力";
+                document.getElementById('normal-input-area').style.display = 'none';
+                document.getElementById('reader-container').style.display = 'none';
+                document.getElementById('rom-input-area').style.display = 'block';
+            } else if(currentStep === 4) {
+                status.innerText = "④ 封印スキャン";
+                document.getElementById('btn-finish').style.display = 'block';
+                document.getElementById('seal-display').style.display = 'block';
+            }
+        }
+
+        function handleManualInput() {
+            if(currentStep === 3) {
+                const r1 = document.getElementById('rom-1').value;
+                const r2 = document.getElementById('rom-select').value;
+                const r3 = document.getElementById('rom-3').value;
+                if(r1 && r3) { showConfirmation(r1+r2+r3); }
+            } else {
+                const val = document.getElementById('manual-input').value;
+                if(val) { showConfirmation(val); document.getElementById('manual-input').value = ""; }
+            }
+        }
+
+        function skipMainBoard() { showConfirmation("なし"); }
 
         function finishMachine() {
             currentData.sealId = tempSeals.join(' ');
             allData.push(currentData);
-            const row = `<tr style="border-bottom:1px solid #ddd; text-align:center;"><td style="padding:5px;">${currentData.machineId}</td><td>${currentData.mainBoardId}</td><td>${currentData.romId}</td><td>${currentData.sealId}</td></tr>`;
+            const row = `<tr><td>${currentData.machineId}</td><td>${currentData.mainBoardId}</td><td>${currentData.romId}</td><td>${currentData.sealId}</td></tr>`;
             document.getElementById('history-tbody').insertAdjacentHTML('afterbegin', row);
             document.getElementById('counter-badge').innerText = `計: ${allData.length}台`;
-            
-            // トースト表示
-            const t = document.getElementById('toast');
-            t.style.display = 'block'; setTimeout(() => t.style.opacity = '1', 10);
-            setTimeout(() => { t.style.opacity = '0'; setTimeout(() => t.style.display = 'none', 300); }, 1000);
-
-            // リセット
             currentStep = 1;
-            document.getElementById('status').innerText = "① 台番号スキャン";
-            document.getElementById('ai-capture-btn').style.display = 'block';
-            ['btn-finish', 'btn-back', 'seal-display', 'rom-input-area'].forEach(id => document.getElementById(id).style.display = 'none');
-            document.getElementById('normal-input-area').style.display = 'block';
-            document.getElementById('reader-container').style.display = 'block';
-            updateTheme(); html5QrCode.resume();
+            updateUI();
         }
 
-        function skipMainBoard() { if(currentStep === 2) showConfirmation("なし"); }
-        function toggleRomAlpha() { /* 以前のロジック */ }
-        async function toggleTorch() {
-            isTorchOn = !isTorchOn;
-            try { await html5QrCode.applyVideoConstraints({ advanced: [{ torch: isTorchOn }] }); } catch (e) { alert("ライト非対応"); }
+        function goBack() {
+            currentStep--;
+            updateUI();
+            html5QrCode.resume();
         }
-        function downloadCSV() { /* 以前のロジック */ }
-        function goBack() { /* 以前のロジック */ }
+
+        function downloadCSV() {
+            let csv = "\ufeff社員,店舗,時間,台番,主,ROM,封印\n";
+            allData.forEach(d => csv += `${staffId},${shopId},${d.time},${d.machineId},${d.mainBoardId},${d.romId},"${d.sealId}"\n`);
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `点検_${shopId}.csv`; a.click();
+        }
     </script>
 </body>
 </html>
