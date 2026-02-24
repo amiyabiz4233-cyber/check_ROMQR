@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v6.1</title>
+    <title>点検スキャナー v6.2</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; --input-bg: #ffffff; --input-border: #dddddd; }
@@ -94,10 +94,28 @@
     <script>
         let staffId, shopId, currentStep = 1, currentData = {}, tempSeals = [], allData = [], html5QrCode, isTorchOn = false, pendingValue = "";
         let lastRom1 = "", lastRom2 = "KY", lastRom3 = "";
+        
+        // オーディオコンテキストの初期化（ピッ音用）
+        let audioCtx = null;
+
+        function playBeep() {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioCtx.createOscillator();
+            const gainNode = audioCtx.createGain();
+            oscillator.connect(gainNode);
+            gainNode.connect(audioCtx.destination);
+            oscillator.type = 'sine';
+            oscillator.frequency.setValueAtTime(880, audioCtx.currentTime); // A5 (880Hz)
+            gainNode.gain.setValueAtTime(0.1, audioCtx.currentTime);
+            oscillator.start();
+            oscillator.stop(audioCtx.currentTime + 0.1); // 0.1秒鳴らす
+        }
 
         function startApp() {
             staffId = document.getElementById('staff-id').value; shopId = document.getElementById('shop-id').value;
             if(!staffId || !shopId) return alert("番号を入力してください");
+            // 音声再生の有効化
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
             document.getElementById('setup-screen').style.display = 'none';
             document.getElementById('main-app').style.display = 'block';
             updateTheme(); initScanner();
@@ -116,7 +134,12 @@
             html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess);
         }
 
-        function onScanSuccess(text) { html5QrCode.pause(); if (navigator.vibrate) navigator.vibrate(80); showConfirmation(text); }
+        function onScanSuccess(text) { 
+            html5QrCode.pause(); 
+            playBeep(); // 音を鳴らす
+            if (navigator.vibrate) navigator.vibrate(80); // バイブ
+            showConfirmation(text); 
+        }
 
         async function toggleTorch() {
             isTorchOn = !isTorchOn;
