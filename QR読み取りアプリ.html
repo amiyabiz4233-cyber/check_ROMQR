@@ -3,37 +3,29 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v9.0</title>
+    <title>点検スキャナー v9.1</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; --input-bg: #ffffff; --input-border: #dddddd; }
         body { font-family: sans-serif; margin: 0; padding: 8px; background: var(--bg-color); color: var(--text-color); }
         .card { background: var(--card-bg); padding: 12px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 10px; }
-        
-        /* カメラ領域をさらに縮小（30%程度） */
         #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; min-height: 80px; } 
-        #reader video { object-fit: cover; } /* 狭い領域でも中央が見えるように調整 */
-        
+        #reader video { object-fit: cover; }
         .status-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         .status-badge { padding: 4px 12px; border-radius: 20px; background: #007bff; color: white; font-weight: bold; font-size: 14px; }
         .btn-reload-cam { padding: 6px 12px; border-radius: 8px; background: #ff9800; color: white; font-size: 12px; border: none; font-weight: bold; }
-        
         input, select { width: 100%; height: 45px; padding: 8px; background: var(--input-bg); color: var(--text-color); border: 2px solid var(--input-border); border-radius: 8px; box-sizing: border-box; font-size: 18px; margin-top: 5px; }
         button { width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; margin-top: 8px; }
-        
         .btn-primary { background: #3b82f6; color: white; }
         .btn-success { background: #22c55e; color: white; }
         .btn-danger { background: #ef4444; color: white; }
         .btn-ai { background: #8b5cf6; color: white; display: none; margin-top: 5px; padding: 8px; }
         .btn-secondary { background: #4b5563; color: white; }
-        
         .btn-csv { background: #10b981; color: white; margin: 20px 0; }
-        
         .shop-name-display { color: #007bff; font-weight: bold; margin-top: 8px; font-size: 1em; background: #e7f1ff; padding: 10px; border-radius: 8px; text-align: center; }
         .shop-list-container { margin-top: 20px; padding-top: 15px; border-top: 2px dashed #ddd; }
         .shop-list-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; }
         .shop-item { background: #fff; padding: 6px; border-radius: 6px; border: 1px solid #eee; font-size: 12px; color: #555; }
-
         #confirm-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; }
         #confirm-modal { background: var(--card-bg); width: 90%; padding: 20px; border-radius: 20px; text-align: center; }
         table { width: 100%; border-collapse: collapse; font-size: 0.8em; margin-top: 10px; }
@@ -152,7 +144,6 @@
 
         function startScanner() {
             html5QrCode = new Html5Qrcode("reader");
-            // 縦幅を抑えるために設定を調整
             html5QrCode.start({ facingMode: "environment" }, { fps: 20, aspectRatio: 2.0 }, (text) => {
                 html5QrCode.pause(); showConfirmation(text);
             }).catch(err => console.error(err));
@@ -250,9 +241,16 @@
             allData.push(dataToPush);
             const row = `<tr><td>${dataToPush.machineId}</td><td>${dataToPush.mainBoardId}</td><td>${dataToPush.romId}</td><td>${sealsText}</td></tr>`;
             document.getElementById('history-tbody').insertAdjacentHTML('afterbegin', row);
-            currentStep = 1; currentData = { seals: [] }; 
+            
+            // 状態リセット
+            currentStep = 1; 
+            currentData = { seals: [] }; 
             document.getElementById('seal-list-display').innerHTML = "";
-            document.getElementById('rom-1').value = ""; document.getElementById('rom-3').value = "";
+            
+            // ROM1とROM3の値はクリアせずに維持（前回値を初期値とする）
+            // document.getElementById('rom-1').value = "";  <-- ここをコメントアウト
+            // document.getElementById('rom-3').value = "";  <-- ここをコメントアウト
+            
             updateUI();
         }
 
