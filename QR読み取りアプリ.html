@@ -3,12 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v7.7</title>
+    <title>点検スキャナー v7.9</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; --input-bg: #ffffff; --input-border: #dddddd; }
         body.dark-mode { --bg-color: #121212; --card-bg: #1e1e1e; --text-color: #e0e0e0; --input-bg: #2d2d2d; --input-border: #444444; }
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 10px; background: var(--bg-color); color: var(--text-color); transition: background 0.3s, color 0.3s; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; margin: 0; padding: 10px; background: var(--bg-color); color: var(--text-color); transition: background 0.3s, color 0.3s; padding-bottom: 80px; }
         .card { background: var(--card-bg); padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 15px; }
         #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; min-height: 180px; } 
         .status-badge { display: inline-block; padding: 6px 15px; border-radius: 20px; background: #007bff; color: white; font-weight: bold; margin-bottom: 10px; }
@@ -19,19 +19,26 @@
         .btn-danger { background: #ef4444; color: white; }
         .btn-ai { background: #8b5cf6; color: white; display: none; }
         .btn-secondary { background: #4b5563; color: white; }
+        .btn-csv { background: #10b981; color: white; width: 95%; position: fixed; bottom: 10px; left: 2.5%; z-index: 100; box-shadow: 0 -2px 10px rgba(0,0,0,0.2); }
         #confirm-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; }
         #confirm-modal { background: var(--card-bg); width: 90%; padding: 25px; border-radius: 20px; text-align: center; }
-        .loading-spinner { display: none; border: 4px solid #f3f3f3; border-top: 4px solid #8b5cf6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
+        .loading-spinner { border: 4px solid #f3f3f3; border-top: 4px solid #8b5cf6; border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin: 20px auto; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        table { width: 100%; border-collapse: collapse; font-size: 0.8em; }
+        th, td { border-bottom: 1px solid var(--input-border); padding: 8px; text-align: left; }
     </style>
 </head>
 <body id="body">
+
     <div id="confirm-overlay">
         <div id="confirm-modal">
-            <div id="ai-loading-text" style="display:none;">AIが数字を解析中...<div class="loading-spinner" style="display:block;"></div></div>
+            <div id="ai-loading-text" style="display:none;">
+                AI解析中...
+                <div class="loading-spinner"></div>
+            </div>
             <div id="ai-result-area">
                 <div id="scanned-display" style="font-size:32px; font-weight:bold; color:#ff4500; margin-bottom:20px;">----</div>
-                <button class="btn-success" id="ok-btn" onclick="approveValue()">OK</button>
+                <button class="btn-success" onclick="approveValue()">OK</button>
             </div>
             <button class="btn-danger" onclick="rejectValue()">やり直し / QRに戻る</button>
         </div>
@@ -39,8 +46,8 @@
 
     <div id="setup-screen" class="card">
         <h3>初期設定</h3>
-        <label style="font-size: 0.8em;">Gemini APIキー (任意: AI機能用)</label>
-        <input type="password" id="gemini-key" placeholder="未入力ならAIボタン非表示">
+        <label style="font-size: 0.8em;">Gemini APIキー (任意：入力時のみAIボタン表示)</label>
+        <input type="password" id="gemini-key" placeholder="未入力OK">
         <label style="font-size: 0.8em; margin-top: 10px; display: block;">社員番号 (5桁)</label>
         <input type="number" id="staff-id" oninput="if(value.length>5)value=value.slice(0,5)">
         <label style="font-size: 0.8em; margin-top: 10px; display: block;">店舗番号 (2桁)</label>
@@ -53,19 +60,19 @@
             <div id="status" class="status-badge">① 台番号スキャン</div>
             <div id="reader-container">
                 <div id="reader"></div>
-                <button class="btn-ai" id="ai-btn" onclick="captureAndOCR()">📸 映っている数字をAIで読む</button>
+                <button class="btn-ai" id="ai-btn" onclick="captureAndOCR()">📸 AIで数字を読み取る</button>
             </div>
-
+            
             <div id="normal-input-area" style="margin-top:10px;">
-                <input type="text" id="manual-input" placeholder="手入力確定はこちら">
+                <input type="text" id="manual-input" placeholder="手入力確定">
                 <button class="btn-primary" onclick="handleManualInput()">確定</button>
             </div>
 
             <div id="rom-input-area" style="display:none; margin-top:10px;">
                 <div style="display:flex; gap:5px;">
-                    <input type="number" id="rom-1" style="flex:1;" placeholder="数字" onfocus="this.select();">
-                    <select id="rom-select" style="height:50px; flex:1;"><option value="KY">KY</option><option value="EAI">EAI</option></select>
-                    <input type="number" id="rom-3" style="flex:1;" placeholder="数字" onfocus="this.select();">
+                    <input type="number" id="rom-1" style="flex:1;" placeholder="数字">
+                    <select id="rom-select" style="flex:1;"><option value="KY">KY</option><option value="EAI">EAI</option></select>
+                    <input type="number" id="rom-3" style="flex:1;" placeholder="数字">
                 </div>
                 <button class="btn-primary" onclick="handleManualInput()">ROM確定</button>
             </div>
@@ -74,11 +81,19 @@
             <button id="btn-finish" class="btn-success" style="display:none;" onclick="finishMachine()">登録して次の台へ</button>
             <button id="btn-back" class="btn-secondary" style="display:none;" onclick="goBack()">前へ戻る</button>
         </div>
-        <div class="card history-table-container"><table><thead><tr><th>台番</th><th>主</th><th>ROM</th></tr></thead><tbody id="history-tbody"></tbody></table></div>
+
+        <div class="card" style="overflow-x:auto;">
+            <table id="history-table">
+                <thead><tr><th>台番</th><th>主</th><th>ROM</th></tr></thead>
+                <tbody id="history-tbody"></tbody>
+            </table>
+        </div>
     </div>
 
+    <button class="btn-csv" onclick="downloadCSV()">現在のデータをCSV保存</button>
+
     <script>
-        let staffId, shopId, geminiKey, currentStep = 1, currentData = {}, html5QrCode, pendingValue = "";
+        let staffId, shopId, geminiKey, currentStep = 1, currentData = {}, allData = [], html5QrCode, pendingValue = "";
 
         window.onload = () => {
             const savedKey = localStorage.getItem('gemini_api_key');
@@ -89,8 +104,11 @@
             staffId = document.getElementById('staff-id').value;
             shopId = document.getElementById('shop-id').value;
             geminiKey = document.getElementById('gemini-key').value.trim();
-            if(!staffId || !shopId) return alert("社員番号と店舗番号は必須です");
+            if(!staffId || !shopId) return alert("社員番号と店舗番号を入力してください");
+            
             if(geminiKey) localStorage.setItem('gemini_api_key', geminiKey);
+            else localStorage.removeItem('gemini_api_key');
+
             document.getElementById('setup-screen').style.display = 'none';
             document.getElementById('main-app').style.display = 'block';
             updateUI(); initScanner();
@@ -109,7 +127,6 @@
             const video = document.querySelector('#reader video');
             if(!video) return;
             html5QrCode.pause();
-            
             document.getElementById('confirm-overlay').style.display = 'flex';
             document.getElementById('ai-loading-text').style.display = 'block';
             document.getElementById('ai-result-area').style.display = 'none';
@@ -123,23 +140,17 @@
                 const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        contents: [{ 
-                            parts: [
-                                { text: "画像内の台番号（数字）を抽出し、数字のみ回答してください。" },
-                                { inline_data: { mime_type: "image/jpeg", data: base64Image } }
-                            ] 
-                        }] 
-                    })
+                    body: JSON.stringify({ contents: [{ parts: [{ text: "画像内の数字のみ抽出してください" }, { inline_data: { mime_type: "image/jpeg", data: base64Image } }] }] })
                 });
                 
                 const data = await response.json();
                 if (data.error) throw new Error(data.error.message);
 
                 const aiResult = data.candidates[0].content.parts[0].text.trim().replace(/\D/g, "");
+                document.getElementById('ai-loading-text').style.display = 'none';
                 showConfirmation(aiResult || "読取不可");
             } catch (e) {
-                alert("AI読み取りエラー: " + e.message);
+                alert("AIエラー: " + e.message);
                 rejectValue();
             }
         }
@@ -153,7 +164,6 @@
         }
 
         function approveValue() {
-            if(!pendingValue && currentStep !== 2) return alert("値を読み取るか入力してください");
             document.getElementById('confirm-overlay').style.display = 'none';
             if(currentStep === 1) { currentData = { machineId: pendingValue }; currentStep = 2; }
             else if(currentStep === 2) { currentData.mainBoardId = pendingValue; currentStep = 3; }
@@ -164,25 +174,22 @@
 
         function rejectValue() {
             document.getElementById('confirm-overlay').style.display = 'none';
-            document.getElementById('ai-loading-text').style.display = 'none';
-            html5QrCode.resume();
+            if(html5QrCode) html5QrCode.resume();
         }
 
         function updateUI() {
             document.getElementById('body').classList.toggle('dark-mode', currentStep !== 1);
-            
-            // ボタンの表示・非表示
+            // AIボタンの表示制御（APIキーがあり、かつステップ1の時のみ）
             document.getElementById('ai-btn').style.display = (currentStep === 1 && geminiKey) ? 'block' : 'none';
+            
             document.getElementById('btn-skip').style.display = (currentStep === 2) ? 'block' : 'none';
             document.getElementById('btn-finish').style.display = (currentStep === 4) ? 'block' : 'none';
             document.getElementById('btn-back').style.display = (currentStep > 1) ? 'block' : 'none';
-            
-            // 入力エリアの表示・非表示
             document.getElementById('rom-input-area').style.display = (currentStep === 3) ? 'block' : 'none';
             document.getElementById('normal-input-area').style.display = (currentStep !== 3) ? 'block' : 'none';
             document.getElementById('reader-container').style.display = (currentStep !== 3) ? 'block' : 'none';
             
-            const titles = ["", "① 台番号スキャン", "② 主基板スキャン", "③ ROM入力", "④ 確認して登録"];
+            const titles = ["", "① 台番号スキャン", "② 主基板スキャン", "③ ROM入力", "④ 登録確認"];
             document.getElementById('status').innerText = titles[currentStep];
         }
 
@@ -197,13 +204,28 @@
                 if(val) { showConfirmation(val); document.getElementById('manual-input').value = ""; }
             }
         }
+
         function skipMainBoard() { pendingValue = "なし"; approveValue(); }
+
         function finishMachine() {
+            allData.push({...currentData, time: new Date().toLocaleTimeString()});
             const row = `<tr><td>${currentData.machineId}</td><td>${currentData.mainBoardId}</td><td>${currentData.romId}</td></tr>`;
             document.getElementById('history-tbody').insertAdjacentHTML('afterbegin', row);
             currentStep = 1; updateUI();
         }
+
         function goBack() { if(currentStep > 1) currentStep--; updateUI(); html5QrCode.resume(); }
+
+        function downloadCSV() {
+            if(allData.length === 0) return alert("保存するデータがありません");
+            let csv = "\ufeff社員,店舗,時間,台番,主,ROM\n";
+            allData.forEach(d => csv += `${staffId},${shopId},${d.time},${d.machineId},${d.mainBoardId},${d.romId}\n`);
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = `点検データ_${shopId}_${new Date().toLocaleDateString()}.csv`;
+            a.click();
+        }
     </script>
 </body>
 </html>
