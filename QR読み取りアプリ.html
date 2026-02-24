@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v8.1</title>
+    <title>点検スキャナー v8.2</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; --input-bg: #ffffff; --input-border: #dddddd; }
@@ -22,7 +22,7 @@
         .btn-csv { background: #10b981; color: white; width: 95%; position: fixed; bottom: 10px; left: 2.5%; z-index: 1000; }
         #confirm-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; }
         #confirm-modal { background: var(--card-bg); width: 90%; padding: 25px; border-radius: 20px; text-align: center; }
-        .shop-name-display { color: #007bff; font-weight: bold; margin-top: 5px; font-size: 0.9em; }
+        .shop-name-display { color: #007bff; font-weight: bold; margin-top: 5px; font-size: 1.1em; background: #e7f1ff; padding: 5px; border-radius: 5px; text-align: center; }
         table { width: 100%; border-collapse: collapse; font-size: 0.8em; margin-top: 10px; }
         th, td { border-bottom: 1px solid var(--input-border); padding: 8px; text-align: left; }
     </style>
@@ -49,7 +49,7 @@
         <input type="number" id="staff-id" oninput="if(value.length>5)value=value.slice(0,5)">
         
         <label style="margin-top:10px; display:block;">店舗番号 (2桁)</label>
-        <input type="number" id="shop-id" oninput="updateShopName(); if(value.length>2)value=value.slice(0,2)">
+        <input type="number" id="shop-id" placeholder="例: 01" oninput="updateShopName(); if(value.length>2)value=value.slice(0,2)">
         <div id="shop-name" class="shop-name-display">店舗を選択してください</div>
         
         <button class="btn-primary" onclick="startApp()">点検開始</button>
@@ -93,16 +93,22 @@
     <button class="btn-csv" onclick="downloadCSV()">現在のデータをCSV保存</button>
 
     <script>
+        // 指定された店舗リスト
         const shopList = {
-            "01": "新宿店", "02": "渋谷店", "03": "池袋店", "04": "上野店", "05": "横浜店",
-            "06": "名古屋店", "07": "梅田店", "08": "難波店", "09": "福岡店", "10": "札幌店"
+            "01": "成田", "09": "潮来", "16": "木更津", "18": "神栖", "20": "多古",
+            "22": "葉山", "23": "鹿嶋2", "28": "八日市場", "34": "奥野谷", "43": "大和",
+            "44": "淵野辺", "13": "小見川", "25": "鹿嶋1", "26": "旭", "27": "八街",
+            "29": "東金", "30": "富里", "31": "文違", "32": "今宮", "33": "市原",
+            "35": "松戸", "36": "石岡", "37": "稲毛", "38": "佐原", "39": "川越",
+            "40": "町田", "41": "セン南", "45": "ウイング"
         };
 
         let staffId, shopId, geminiKey, currentStep = 1, currentData = {}, allData = [], html5QrCode, pendingValue = "";
 
         function updateShopName() {
-            const id = document.getElementById('shop-id').value.padStart(2, '0');
-            document.getElementById('shop-name').innerText = shopList[id] || "不明な店舗";
+            let id = document.getElementById('shop-id').value;
+            if(id.length === 1) id = "0" + id; // 1桁入力時は0埋め
+            document.getElementById('shop-name').innerText = shopList[id] || "未登録の店舗番号";
         }
 
         window.onload = () => {
@@ -112,9 +118,13 @@
 
         function startApp() {
             staffId = document.getElementById('staff-id').value;
-            shopId = document.getElementById('shop-id').value.padStart(2, '0');
+            let idInput = document.getElementById('shop-id').value;
+            shopId = idInput.length === 1 ? "0" + idInput : idInput;
             geminiKey = document.getElementById('gemini-key').value.trim();
-            if(!staffId || !shopId || !shopList[shopId]) return alert("社員番号と正しい店舗番号を入力してください");
+            
+            if(!staffId || !shopId || !shopList[shopId]) {
+                return alert("社員番号と有効な店舗番号を入力してください");
+            }
             
             if(geminiKey) localStorage.setItem('gemini_api_key', geminiKey);
             document.getElementById('setup-screen').style.display = 'none';
@@ -123,8 +133,11 @@
         }
 
         function initScanner() {
-            if(html5QrCode) html5QrCode.stop().then(() => startScanner());
-            else startScanner();
+            if(html5QrCode) {
+                html5QrCode.stop().then(() => startScanner()).catch(() => startScanner());
+            } else {
+                startScanner();
+            }
         }
 
         function startScanner() {
@@ -132,7 +145,7 @@
             html5QrCode.start({ facingMode: "environment" }, { fps: 20, aspectRatio: 1.0 }, (text) => {
                 html5QrCode.pause();
                 showConfirmation(text);
-            }).catch(err => console.error("Camera error:", err));
+            }).catch(err => console.error(err));
         }
 
         async function captureAndOCR() {
@@ -157,7 +170,7 @@
                 const aiResult = data.candidates[0].content.parts[0].text.trim().replace(/\D/g, "");
                 showConfirmation(aiResult || "読取不可");
             } catch (e) {
-                alert("AIエラー"); rejectValue();
+                alert("AIエラーが発生しました"); rejectValue();
             }
         }
 
@@ -227,19 +240,13 @@
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `点検_${shopId}_${new Date().toLocaleDateString()}.csv`;
+            a.download = `点検_${shopId}_${shopList[shopId]}_${new Date().toLocaleDateString()}.csv`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
             
-            // カメラ接続を維持、または再起動
-            setTimeout(() => {
-                if (html5QrCode && html5QrCode.getState() === 1) { // 1 = NOT_STARTED
-                     initScanner();
-                } else if (html5QrCode) {
-                     html5QrCode.resume();
-                }
-            }, 500);
+            // 保存後にカメラを確実に再起動
+            setTimeout(() => { if (html5QrCode) initScanner(); }, 800);
         }
     </script>
 </body>
