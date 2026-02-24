@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>遊技機点検スキャナー v4.7</title>
+    <title>遊技機点検スキャナー v4.8</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; padding: 10px; background: #f0f2f5; color: #333; }
@@ -13,16 +13,32 @@
         #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; min-height: 225px; }
         .status-badge { display: inline-block; padding: 6px 15px; border-radius: 20px; background: #007bff; color: white; font-weight: bold; margin-bottom: 10px; }
         
-        #confirm-area { display: none; background: #fff3cd; border: 2px solid #ffeeba; padding: 15px; border-radius: 12px; margin-bottom: 15px; text-align: center; }
-        .scanned-value { font-size: 24px; font-weight: bold; color: #856404; margin: 10px 0; }
+        /* 【重要】ポップアップ確認画面のスタイル */
+        #confirm-overlay { 
+            display: none; 
+            position: fixed; 
+            top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.7); 
+            z-index: 9999; 
+            justify-content: center; 
+            align-items: center; 
+        }
+        #confirm-modal { 
+            background: white; 
+            width: 85%; 
+            padding: 25px; 
+            border-radius: 20px; 
+            text-align: center; 
+            box-shadow: 0 10px 25px rgba(0,0,0,0.5); 
+        }
+        .scanned-value { font-size: 28px; font-weight: bold; color: #d9534f; margin: 15px 0; word-break: break-all; }
 
         label { display: block; margin-top: 10px; font-size: 0.85em; color: #666; font-weight: bold; }
-        
         .rom-split-container { display: flex; gap: 5px; margin-top: 5px; align-items: center; }
-        .rom-input-box { flex: 1; padding: 12px 2px; border: 2px solid #ddd; border-radius: 8px; font-size: 18px; text-align: center; width: 30%; }
-        select.rom-input-box { flex: 1.2; background-color: #fff; height: 50px; }
+        .rom-input-box { flex: 1; padding: 12px 2px; border: 2px solid #ddd; border-radius: 8px; font-size: 18px; text-align: center; }
         
-        input[type="number"], input[type="text"] { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 18px; margin-top: 5px; }
+        input[type="number"], input[type="text"], select { width: 100%; padding: 12px; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box; font-size: 18px; margin-top: 5px; }
         
         button { width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; margin-top: 10px; font-size: 16px; }
         .btn-primary { background: #007bff; color: white; }
@@ -31,15 +47,22 @@
         .btn-secondary { background: #6c757d; color: white; margin-top: 5px; }
         .btn-download { background: #333; color: white; margin-top: 20px; }
         
-        /* データ一覧表のスタイル */
         .history-table-container { margin-top: 20px; overflow-x: auto; background: white; border-radius: 8px; font-size: 0.75em; }
         table { width: 100%; border-collapse: collapse; min-width: 400px; }
         th, td { border: 1px solid #ddd; padding: 8px; text-align: center; }
         th { background-color: #f8f9fa; }
-        tr:nth-child(even) { background-color: #f2f2f2; }
     </style>
 </head>
 <body>
+
+    <div id="confirm-overlay">
+        <div id="confirm-modal">
+            <div style="font-size: 0.9em; color: #666;">読み取り/入力の確認</div>
+            <div id="scanned-display" class="scanned-value">----</div>
+            <button class="btn-success" onclick="approveValue()" style="font-size: 1.2em;">OK（次へ）</button>
+            <button class="btn-danger" onclick="rejectValue()">やり直し</button>
+        </div>
+    </div>
 
     <div id="setup-screen" class="card">
         <h3>初期設定</h3>
@@ -51,12 +74,6 @@
     </div>
 
     <div id="main-app" style="display:none;">
-        <div id="confirm-area">
-            <div id="scanned-display" class="scanned-value">----</div>
-            <button class="btn-success" onclick="approveValue()">OK（次へ）</button>
-            <button class="btn-danger" onclick="rejectValue()">やり直し</button>
-        </div>
-
         <div id="scan-controls">
             <div class="card">
                 <div id="status" class="status-badge">① 台番号をスキャン</div>
@@ -73,40 +90,34 @@
                 <div id="rom-input-area" style="display:none;">
                     <label>ROM番号 (数字 - 英字 - 数字)</label>
                     <div class="rom-split-container">
-                        <input type="number" id="rom-1" class="rom-input-box" pattern="\d*" inputmode="numeric" placeholder="数字">
+                        <input type="number" id="rom-1" class="rom-input-box" pattern="\d*" inputmode="numeric">
                         <select id="rom-select" class="rom-input-box" onchange="toggleRomAlpha()">
                             <option value="KY">KY</option>
                             <option value="EAI">EAI</option>
-                            <option value="OTHER">その他(手入力)</option>
+                            <option value="OTHER">その他</option>
                         </select>
                         <input type="text" id="rom-2-custom" class="rom-input-box" style="display:none; text-transform:uppercase;" placeholder="英字">
-                        <input type="number" id="rom-3" class="rom-input-box" pattern="\d*" inputmode="numeric" placeholder="数字">
+                        <input type="number" id="rom-3" class="rom-input-box" pattern="\d*" inputmode="numeric">
                     </div>
                 </div>
 
                 <button class="btn-primary" id="btn-submit" onclick="handleManualInput()">確定</button>
-                <button id="btn-back" class="btn-secondary" style="display:none;" onclick="goBack()">戻る</button>
+                <button id="btn-back" class="btn-secondary" style="display:none;" onclick="goBack()">前へ戻る</button>
                 
                 <div id="seal-area" style="display:none;">
-                    <div id="current-seals" style="margin-top:10px; font-size:0.9em; background:#eee; padding:10px; border-radius:5px;">（シール未読み取り）</div>
+                    <div id="current-seals" style="margin-top:10px; font-size:0.9em; background:#eee; padding:10px; border-radius:5px; border-left: 5px solid #28a745;">（シール未読み取り）</div>
                     <button class="btn-success" onclick="finishMachine()">封印終了 ➔ 次の台へ</button>
                 </div>
             </div>
         </div>
 
         <div class="card history-table-container">
-            <h3>今回入力したデータ一覧</h3>
+            <h3 style="color: #666; font-size: 0.9em;">入力履歴 (最新5台)</h3>
             <table id="history-table">
                 <thead>
-                    <tr>
-                        <th>台番</th>
-                        <th>主基板</th>
-                        <th>ROM</th>
-                        <th>封印</th>
-                    </tr>
+                    <tr><th>台番</th><th>主基板</th><th>ROM</th><th>封印</th></tr>
                 </thead>
-                <tbody>
-                    </tbody>
+                <tbody></tbody>
             </table>
         </div>
 
@@ -171,44 +182,24 @@
                 } else { alert("ROM番号を入力してください"); }
             } else {
                 const val = document.getElementById('manual-input').value;
-                if(val) { showConfirmation(val); document.getElementById('manual-input').value = ""; }
+                if(val) { 
+                    showConfirmation(val); 
+                    document.getElementById('manual-input').value = ""; 
+                }
             }
+            document.activeElement.blur(); // キーボードを閉じる
         }
 
         function showConfirmation(value) {
             pendingValue = value;
             document.getElementById('scanned-display').innerText = value;
-            document.getElementById('confirm-area').style.display = 'block';
-            document.getElementById('scan-controls').style.opacity = '0.3';
+            // ポップアップを表示
+            document.getElementById('confirm-overlay').style.display = 'flex';
             html5QrCode.pause();
         }
 
-        function goBack() {
-            if (currentStep === 2) {
-                currentStep = 1;
-                document.getElementById('status').innerText = "① 台番号をスキャン";
-                document.getElementById('btn-back').style.display = 'none';
-            } else if (currentStep === 3) {
-                currentStep = 2;
-                document.getElementById('status').innerText = "② 主基板番号をスキャン";
-                document.getElementById('rom-input-area').style.display = 'none';
-                document.getElementById('normal-input-area').style.display = 'block';
-                document.getElementById('reader-container').style.display = 'block';
-                html5QrCode.resume();
-            } else if (currentStep === 4) {
-                currentStep = 3;
-                document.getElementById('status').innerText = "③ ROM番号を入力(カメラ停止)";
-                document.getElementById('seal-area').style.display = 'none';
-                document.getElementById('rom-input-area').style.display = 'block';
-                document.getElementById('normal-input-area').style.display = 'none';
-                document.getElementById('reader-container').style.display = 'none';
-                html5QrCode.pause();
-            }
-        }
-
         function approveValue() {
-            document.getElementById('confirm-area').style.display = 'none';
-            document.getElementById('scan-controls').style.opacity = '1';
+            document.getElementById('confirm-overlay').style.display = 'none';
             const value = pendingValue;
 
             if(currentStep === 1) {
@@ -220,7 +211,7 @@
             } 
             else if(currentStep === 2) {
                 currentData.mainBoardId = value;
-                document.getElementById('status').innerText = "③ ROM番号を入力(カメラ停止)";
+                document.getElementById('status').innerText = "③ ROM番号入力(カメラ停止中)";
                 document.getElementById('normal-input-area').style.display = 'none';
                 document.getElementById('rom-input-area').style.display = 'block';
                 document.getElementById('reader-container').style.display = 'none';
@@ -248,15 +239,37 @@
         }
 
         function rejectValue() {
-            document.getElementById('confirm-area').style.display = 'none';
-            document.getElementById('scan-controls').style.opacity = '1';
+            document.getElementById('confirm-overlay').style.display = 'none';
             if(currentStep !== 3) html5QrCode.resume();
+        }
+
+        function goBack() {
+            if (currentStep === 2) {
+                currentStep = 1;
+                document.getElementById('status').innerText = "① 台番号をスキャン";
+                document.getElementById('btn-back').style.display = 'none';
+            } else if (currentStep === 3) {
+                currentStep = 2;
+                document.getElementById('status').innerText = "② 主基板番号をスキャン";
+                document.getElementById('rom-input-area').style.display = 'none';
+                document.getElementById('normal-input-area').style.display = 'block';
+                document.getElementById('reader-container').style.display = 'block';
+                html5QrCode.resume();
+            } else if (currentStep === 4) {
+                currentStep = 3;
+                document.getElementById('status').innerText = "③ ROM番号入力(カメラ停止中)";
+                document.getElementById('seal-area').style.display = 'none';
+                document.getElementById('rom-input-area').style.display = 'block';
+                document.getElementById('normal-input-area').style.display = 'none';
+                document.getElementById('reader-container').style.display = 'none';
+                html5QrCode.pause();
+            }
         }
 
         function updateHistoryTable() {
             const tbody = document.querySelector("#history-table tbody");
             tbody.innerHTML = "";
-            allData.slice().reverse().forEach(d => {
+            allData.slice(-5).reverse().forEach(d => {
                 const tr = document.createElement("tr");
                 tr.innerHTML = `<td>${d.machineId}</td><td>${d.mainBoardId}</td><td>${d.romId}</td><td>${d.sealId}</td>`;
                 tbody.appendChild(tr);
@@ -266,9 +279,8 @@
         function finishMachine() {
             currentData.sealId = tempSeals.join(' ');
             allData.push(currentData);
+            updateHistoryTable();
             
-            updateHistoryTable(); // 表を更新
-
             currentStep = 1;
             document.getElementById('status').innerText = "① 台番号をスキャン";
             document.getElementById('btn-back').style.display = 'none';
@@ -276,7 +288,6 @@
             document.getElementById('rom-input-area').style.display = 'none';
             document.getElementById('reader-container').style.display = 'block';
             document.getElementById('normal-input-area').style.display = 'block';
-            
             document.getElementById('rom-1').value = "";
             document.getElementById('rom-3').value = "";
             html5QrCode.resume();
