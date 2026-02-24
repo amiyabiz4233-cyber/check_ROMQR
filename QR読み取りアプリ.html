@@ -3,11 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v8.5</title>
+    <title>点検スキャナー v8.6</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; --input-bg: #ffffff; --input-border: #dddddd; }
-        body.dark-mode { --bg-color: #121212; --card-bg: #1e1e1e; --text-color: #e0e0e0; --input-bg: #2d2d2d; --input-border: #444444; }
         body { font-family: sans-serif; margin: 0; padding: 10px; background: var(--bg-color); color: var(--text-color); padding-bottom: 90px; }
         .card { background: var(--card-bg); padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 15px; }
         #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; min-height: 180px; } 
@@ -30,7 +29,7 @@
         #confirm-modal { background: var(--card-bg); width: 90%; padding: 25px; border-radius: 20px; text-align: center; }
         table { width: 100%; border-collapse: collapse; font-size: 0.8em; margin-top: 10px; }
         th, td { border-bottom: 1px solid var(--input-border); padding: 8px; text-align: left; }
-        .seal-tag { display: inline-block; background: #e2e8f0; padding: 2px 8px; border-radius: 4px; margin: 2px; font-size: 12px; }
+        .seal-tag { display: inline-block; background: #e2e8f0; padding: 4px 10px; border-radius: 4px; margin: 4px; font-size: 14px; font-weight: bold; border: 1px solid #cbd5e1; }
     </style>
 </head>
 <body>
@@ -50,8 +49,8 @@
         <h3>初期設定</h3>
         <label>Gemini APIキー (任意)</label>
         <input type="password" id="gemini-key">
-        <input type="number" id="staff-id" placeholder="社員番号 (5桁)" oninput="if(value.length>5)value=value.slice(0,5)">
-        <input type="number" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName(); if(value.length>2)value=value.slice(0,2)">
+        <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)" oninput="if(value.length>5)value=value.slice(0,5)">
+        <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName(); if(value.length>2)value=value.slice(0,2)">
         <div id="shop-name" class="shop-name-display">店舗を選択してください</div>
         <button class="btn-primary" onclick="startApp()">点検開始</button>
         <div class="shop-list-container">
@@ -78,9 +77,9 @@
 
             <div id="rom-input-area" style="display:none; margin-top:10px;">
                 <div style="display:flex; gap:5px;">
-                    <input type="number" id="rom-1" style="flex:1;" placeholder="数字">
+                    <input type="number" inputmode="numeric" id="rom-1" style="flex:1;" placeholder="数字">
                     <select id="rom-select" style="flex:1;"><option value="KY">KY</option><option value="EAI">EAI</option></select>
-                    <input type="number" id="rom-3" style="flex:1;" placeholder="数字">
+                    <input type="number" inputmode="numeric" id="rom-3" style="flex:1;" placeholder="数字">
                 </div>
                 <button class="btn-primary" onclick="handleManualInput()">ROM確定</button>
             </div>
@@ -170,6 +169,12 @@
         }
 
         function showConfirmation(value) {
+            // ステップ④の場合のみ重複チェック
+            if(currentStep === 4 && currentData.seals.includes(value)) {
+                alert("警告：この封印シールは既にスキャン済みです！");
+                html5QrCode.resume();
+                return;
+            }
             pendingValue = value;
             document.getElementById('scanned-display').innerText = value;
             document.getElementById('ai-loading-text').style.display = 'none';
@@ -182,7 +187,10 @@
             if(currentStep === 1) { currentData.machineId = pendingValue; currentStep = 2; }
             else if(currentStep === 2) { currentData.mainBoardId = pendingValue; currentStep = 3; }
             else if(currentStep === 3) { currentData.romId = pendingValue; currentStep = 4; }
-            else if(currentStep === 4) { currentData.seals.push(pendingValue); updateSealDisplay(); }
+            else if(currentStep === 4) { 
+                currentData.seals.push(pendingValue); 
+                updateSealDisplay(); 
+            }
             updateUI();
             html5QrCode.resume();
         }
@@ -211,7 +219,9 @@
 
         function handleManualInput() {
             if(currentStep === 3) {
-                const r1 = document.getElementById('rom-1').value; const r2 = document.getElementById('rom-select').value; const r3 = document.getElementById('rom-3').value;
+                const r1 = document.getElementById('rom-1').value; 
+                const r2 = document.getElementById('rom-select').value; 
+                const r3 = document.getElementById('rom-3').value;
                 if(r1 && r3) showConfirmation(r1+r2+r3);
             } else {
                 const val = document.getElementById('manual-input').value;
@@ -233,6 +243,7 @@
             document.getElementById('history-tbody').insertAdjacentHTML('afterbegin', row);
             currentStep = 1; currentData = { seals: [] }; 
             document.getElementById('seal-list-display').innerHTML = "";
+            document.getElementById('rom-1').value = ""; document.getElementById('rom-3').value = "";
             updateUI();
         }
 
