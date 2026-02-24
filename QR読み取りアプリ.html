@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v8.6</title>
+    <title>点検スキャナー v8.7</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; --input-bg: #ffffff; --input-border: #dddddd; }
@@ -77,9 +77,9 @@
 
             <div id="rom-input-area" style="display:none; margin-top:10px;">
                 <div style="display:flex; gap:5px;">
-                    <input type="number" inputmode="numeric" id="rom-1" style="flex:1;" placeholder="数字">
+                    <input type="number" inputmode="numeric" pattern="[0-9]*" id="rom-1" style="flex:1;" placeholder="数字" onclick="this.select();" onfocus="this.select();">
                     <select id="rom-select" style="flex:1;"><option value="KY">KY</option><option value="EAI">EAI</option></select>
-                    <input type="number" inputmode="numeric" id="rom-3" style="flex:1;" placeholder="数字">
+                    <input type="number" inputmode="numeric" pattern="[0-9]*" id="rom-3" style="flex:1;" placeholder="数字" onclick="this.select();" onfocus="this.select();">
                 </div>
                 <button class="btn-primary" onclick="handleManualInput()">ROM確定</button>
             </div>
@@ -169,7 +169,6 @@
         }
 
         function showConfirmation(value) {
-            // ステップ④の場合のみ重複チェック
             if(currentStep === 4 && currentData.seals.includes(value)) {
                 alert("警告：この封印シールは既にスキャン済みです！");
                 html5QrCode.resume();
@@ -187,10 +186,7 @@
             if(currentStep === 1) { currentData.machineId = pendingValue; currentStep = 2; }
             else if(currentStep === 2) { currentData.mainBoardId = pendingValue; currentStep = 3; }
             else if(currentStep === 3) { currentData.romId = pendingValue; currentStep = 4; }
-            else if(currentStep === 4) { 
-                currentData.seals.push(pendingValue); 
-                updateSealDisplay(); 
-            }
+            else if(currentStep === 4) { currentData.seals.push(pendingValue); updateSealDisplay(); }
             updateUI();
             html5QrCode.resume();
         }
@@ -260,7 +256,7 @@
             allData.forEach(d => csv += `${staffId},${sName},${d.time},${d.machineId},${d.mainBoardId},${d.romId},"${d.sealsText}"\n`);
             const blob = new Blob([csv], { type: 'text/csv' });
             const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-            a.download = `点検_${shopId}_${new Date().toLocaleDateString()}.csv`; a.click();
+            a.download = `点検_${shopId}_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`; a.click();
         }
     </script>
 </body>
