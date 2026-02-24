@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v8.2</title>
+    <title>点検スキャナー v8.3</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; --input-bg: #ffffff; --input-border: #dddddd; }
@@ -11,7 +11,9 @@
         body { font-family: sans-serif; margin: 0; padding: 10px; background: var(--bg-color); color: var(--text-color); padding-bottom: 90px; }
         .card { background: var(--card-bg); padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 15px; }
         #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; min-height: 180px; } 
-        .status-badge { display: inline-block; padding: 6px 15px; border-radius: 20px; background: #007bff; color: white; font-weight: bold; margin-bottom: 10px; }
+        .status-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .status-badge { padding: 6px 15px; border-radius: 20px; background: #007bff; color: white; font-weight: bold; }
+        .btn-reload-cam { padding: 6px 12px; border-radius: 8px; background: #ff9800; color: white; font-size: 12px; border: none; cursor: pointer; }
         input, select { width: 100%; height: 50px; padding: 10px; background: var(--input-bg); color: var(--text-color); border: 2px solid var(--input-border); border-radius: 8px; box-sizing: border-box; font-size: 18px; margin-top: 5px; }
         button { width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; margin-top: 10px; }
         .btn-primary { background: #3b82f6; color: white; }
@@ -57,7 +59,10 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div id="status" class="status-badge">① 台番号スキャン</div>
+            <div class="status-header">
+                <div id="status" class="status-badge">① 台番号スキャン</div>
+                <button class="btn-reload-cam" onclick="initScanner()">🔄 カメラ再起動</button>
+            </div>
             <div id="reader-container">
                 <div id="reader"></div>
                 <button class="btn-ai" id="ai-btn" onclick="captureAndOCR()">📸 AI読取</button>
@@ -93,7 +98,6 @@
     <button class="btn-csv" onclick="downloadCSV()">現在のデータをCSV保存</button>
 
     <script>
-        // 指定された店舗リスト
         const shopList = {
             "01": "成田", "09": "潮来", "16": "木更津", "18": "神栖", "20": "多古",
             "22": "葉山", "23": "鹿嶋2", "28": "八日市場", "34": "奥野谷", "43": "大和",
@@ -107,8 +111,8 @@
 
         function updateShopName() {
             let id = document.getElementById('shop-id').value;
-            if(id.length === 1) id = "0" + id; // 1桁入力時は0埋め
-            document.getElementById('shop-name').innerText = shopList[id] || "未登録の店舗番号";
+            if(id.length === 1 && id !== "") id = "0" + id; 
+            document.getElementById('shop-name').innerText = shopList[id] || (id === "" ? "店舗を選択してください" : "カスタム(" + id + ")");
         }
 
         window.onload = () => {
@@ -119,12 +123,10 @@
         function startApp() {
             staffId = document.getElementById('staff-id').value;
             let idInput = document.getElementById('shop-id').value;
-            shopId = idInput.length === 1 ? "0" + idInput : idInput;
+            shopId = (idInput.length === 1) ? "0" + idInput : idInput;
             geminiKey = document.getElementById('gemini-key').value.trim();
             
-            if(!staffId || !shopId || !shopList[shopId]) {
-                return alert("社員番号と有効な店舗番号を入力してください");
-            }
+            if(!staffId || !shopId) return alert("社員番号と店舗番号を入力してください");
             
             if(geminiKey) localStorage.setItem('gemini_api_key', geminiKey);
             document.getElementById('setup-screen').style.display = 'none';
@@ -132,12 +134,11 @@
             updateUI(); initScanner();
         }
 
-        function initScanner() {
+        async function initScanner() {
             if(html5QrCode) {
-                html5QrCode.stop().then(() => startScanner()).catch(() => startScanner());
-            } else {
-                startScanner();
+                try { await html5QrCode.stop(); } catch(e) {}
             }
+            startScanner();
         }
 
         function startScanner() {
@@ -145,7 +146,10 @@
             html5QrCode.start({ facingMode: "environment" }, { fps: 20, aspectRatio: 1.0 }, (text) => {
                 html5QrCode.pause();
                 showConfirmation(text);
-            }).catch(err => console.error(err));
+            }).catch(err => {
+                console.error(err);
+                alert("カメラの起動に失敗しました。再起動ボタンを試すか、ブラウザのカメラ許可を確認してください。");
+            });
         }
 
         async function captureAndOCR() {
@@ -235,18 +239,16 @@
         function downloadCSV() {
             if(allData.length === 0) return alert("保存するデータがありません");
             let csv = "\ufeff社員,店舗,時間,台番,主,ROM\n";
-            allData.forEach(d => csv += `${staffId},${shopList[shopId]},${d.time},${d.machineId},${d.mainBoardId},${d.romId}\n`);
+            const shopName = shopList[shopId] || "カスタム(" + shopId + ")";
+            allData.forEach(d => csv += `${staffId},${shopName},${d.time},${d.machineId},${d.mainBoardId},${d.romId}\n`);
             const blob = new Blob([csv], { type: 'text/csv' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `点検_${shopId}_${shopList[shopId]}_${new Date().toLocaleDateString()}.csv`;
+            a.download = `点検_${shopId}_${shopName}_${new Date().toLocaleDateString()}.csv`;
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-            
-            // 保存後にカメラを確実に再起動
-            setTimeout(() => { if (html5QrCode) initScanner(); }, 800);
         }
     </script>
 </body>
