@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v7.4</title>
+    <title>点検スキャナー v7.6</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; --input-bg: #ffffff; --input-border: #dddddd; }
@@ -28,23 +28,23 @@
 <body id="body">
     <div id="confirm-overlay">
         <div id="confirm-modal">
-            <div id="ai-loading-text" style="display:none;">AI解析中...<div class="loading-spinner" style="display:block;"></div></div>
+            <div id="ai-loading-area">
+                <div id="ai-loading-text" style="display:none;">AI解析中...<div class="loading-spinner" style="display:block;"></div></div>
+            </div>
             <div id="ai-result-area">
                 <div id="scanned-display" style="font-size:32px; font-weight:bold; color:#ff4500; margin-bottom:20px;">----</div>
-                <button class="btn-success" onclick="approveValue()">OK</button>
-                <button class="btn-danger" onclick="rejectValue()">やり直し / QRに戻る</button>
+                <button class="btn-success" id="ok-btn" onclick="approveValue()">OK</button>
             </div>
+            <button class="btn-danger" onclick="rejectValue()">やり直し / QRに戻る</button>
         </div>
     </div>
 
     <div id="setup-screen" class="card">
         <h3>初期設定</h3>
-        <label style="font-size: 0.8em;">Gemini APIキー (任意: キーがあればAIボタンが出現)</label>
-        <input type="password" id="gemini-key" placeholder="未入力でもOK">
-        <label style="font-size: 0.8em; margin-top: 10px; display: block;">社員番号 (5桁)</label>
-        <input type="number" id="staff-id" oninput="if(value.length>5)value=value.slice(0,5)">
-        <label style="font-size: 0.8em; margin-top: 10px; display: block;">店舗番号 (2桁)</label>
-        <input type="number" id="shop-id" oninput="if(value.length>2)value=value.slice(0,2)">
+        <label style="font-size: 0.8em;">Gemini APIキー (任意)</label>
+        <input type="password" id="gemini-key" placeholder="未入力ならAIボタン非表示">
+        <input type="number" id="staff-id" placeholder="社員番号 (5桁)" oninput="if(value.length>5)value=value.slice(0,5)">
+        <input type="number" id="shop-id" placeholder="店舗番号 (2桁)" oninput="if(value.length>2)value=value.slice(0,2)">
         <button class="btn-primary" onclick="startApp()">点検開始</button>
     </div>
 
@@ -75,7 +75,7 @@
     </div>
 
     <script>
-        let staffId, shopId, geminiKey, currentStep = 1, currentData = {}, allData = [], html5QrCode, pendingValue = "";
+        let staffId, shopId, geminiKey, currentStep = 1, currentData = {}, html5QrCode, pendingValue = "";
 
         window.onload = () => {
             const savedKey = localStorage.getItem('gemini_api_key');
@@ -87,10 +87,7 @@
             shopId = document.getElementById('shop-id').value;
             geminiKey = document.getElementById('gemini-key').value.trim();
             if(!staffId || !shopId) return alert("社員番号と店舗番号を入力してください");
-            
             if(geminiKey) localStorage.setItem('gemini_api_key', geminiKey);
-            else localStorage.removeItem('gemini_api_key');
-
             document.getElementById('setup-screen').style.display = 'none';
             document.getElementById('main-app').style.display = 'block';
             updateUI(); initScanner();
@@ -102,13 +99,15 @@
             html5QrCode.start({ facingMode: "environment" }, { fps: 20, aspectRatio: 1.0 }, (text) => {
                 html5QrCode.pause();
                 showConfirmation(text);
-            });
+            }).catch(err => console.log("Camera error:", err));
         }
 
         async function captureAndOCR() {
             const video = document.querySelector('#reader video');
             if(!video) return;
             html5QrCode.pause();
+            
+            // モーダル表示
             document.getElementById('confirm-overlay').style.display = 'flex';
             document.getElementById('ai-loading-text').style.display = 'block';
             document.getElementById('ai-result-area').style.display = 'none';
@@ -119,21 +118,26 @@
                 canvas.getContext('2d').drawImage(video, 0, 0);
                 const base64Image = canvas.toDataURL('image/jpeg', 0.8).split(',')[1];
 
-                // URLを修正: v1beta -> v1, モデル名を gemini-1.5-flash に固定
-                const response = await fetch(`https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+                const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ contents: [{ parts: [{ text: "画像から台番号（数字）のみを抽出して数字だけ答えてください" }, { inline_data: { mime_type: "image/jpeg", data: base64Image } }] }] })
+                    body: JSON.stringify({ 
+                        contents: [{ 
+                            parts: [
+                                { text: "画像内の台番号（数字のみ）を抽出してください。数字以外は不要です。" },
+                                { inline_data: { mime_type: "image/jpeg", data: base64Image } }
+                            ] 
+                        }] 
+                    })
                 });
                 
                 const data = await response.json();
                 if (data.error) throw new Error(data.error.message);
 
                 const aiResult = data.candidates[0].content.parts[0].text.trim().replace(/\D/g, "");
-                document.getElementById('ai-loading-text').style.display = 'none';
-                showConfirmation(aiResult || "読取不可");
+                showConfirmation(aiResult || "読取失敗");
             } catch (e) {
-                alert("AI読み取りエラー: " + e.message);
+                alert("AIエラー: " + e.message);
                 rejectValue();
             }
         }
@@ -141,12 +145,15 @@
         function showConfirmation(value) {
             pendingValue = value;
             document.getElementById('scanned-display').innerText = value;
-            document.getElementById('confirm-overlay').style.display = 'flex';
-            document.getElementById('ai-result-area').style.display = 'block';
             document.getElementById('ai-loading-text').style.display = 'none';
+            document.getElementById('ai-result-area').style.display = 'block';
+            document.getElementById('confirm-overlay').style.display = 'flex';
+            // OKボタンは値がある時だけ有効に見えるように（空欄防止）
+            document.getElementById('ok-btn').style.opacity = value ? "1" : "0.3";
         }
 
         function approveValue() {
+            if(!pendingValue && currentStep !== 2) return; // 空欄でOKはステップ2以外禁止
             document.getElementById('confirm-overlay').style.display = 'none';
             if(currentStep === 1) { currentData = { machineId: pendingValue }; currentStep = 2; }
             else if(currentStep === 2) { currentData.mainBoardId = pendingValue; currentStep = 3; }
@@ -157,8 +164,7 @@
 
         function rejectValue() {
             document.getElementById('confirm-overlay').style.display = 'none';
-            document.getElementById('ai-loading-text').style.display = 'none';
-            html5QrCode.resume();
+            html5QrCode.resume(); // スキャナーを再開
         }
 
         function updateUI() {
@@ -186,13 +192,13 @@
                 if(val) { showConfirmation(val); document.getElementById('manual-input').value = ""; }
             }
         }
-        function skipMainBoard() { showConfirmation("なし"); }
+        function skipMainBoard() { pendingValue = "なし"; approveValue(); }
         function finishMachine() {
             const row = `<tr><td>${currentData.machineId}</td><td>${currentData.mainBoardId}</td><td>${currentData.romId}</td></tr>`;
             document.getElementById('history-tbody').insertAdjacentHTML('afterbegin', row);
             currentStep = 1; updateUI();
         }
-        function goBack() { currentStep--; updateUI(); html5QrCode.resume(); }
+        function goBack() { if(currentStep > 1) currentStep--; updateUI(); html5QrCode.resume(); }
     </script>
 </body>
 </html>
