@@ -3,32 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v9.5</title>
+    <title>点検スキャナー v9.6</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
-        :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; --input-bg: #ffffff; --input-border: #dddddd; }
-        body { font-family: sans-serif; margin: 0; padding: 10px; background: var(--bg-color); color: var(--text-color); }
+        :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; }
+        body { font-family: sans-serif; margin: 0; padding: 10px; background: var(--bg-color); }
         .card { background: var(--card-bg); padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 12px; }
-        #reader-wrapper { width: 100%; border-radius: 10px; overflow: hidden; background: #000; margin-bottom: 10px; border: 2px solid #3b82f6; }
-        #reader { width: 100%; min-height: 250px; } 
-        .status-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        #reader-wrapper { width: 100%; border-radius: 10px; overflow: hidden; background: #000; border: 3px solid #3b82f6; position: relative; }
+        #reader { width: 100%; min-height: 300px; } 
         .status-badge { padding: 6px 15px; border-radius: 20px; background: #007bff; color: white; font-weight: bold; }
-        .btn-reload-cam { padding: 8px 15px; border-radius: 8px; background: #ff9800; color: white; font-size: 14px; border: none; font-weight: bold; }
-        input, select { width: 100%; height: 50px; padding: 10px; background: var(--input-bg); border: 2px solid var(--input-border); border-radius: 8px; box-sizing: border-box; font-size: 18px; margin-top: 5px; }
+        input, select { width: 100%; height: 50px; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 18px; margin-top: 5px; box-sizing: border-box; }
         button { width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; margin-top: 10px; }
         .btn-primary { background: #3b82f6; color: white; }
         .btn-success { background: #22c55e; color: white; }
-        .btn-danger { background: #ef4444; color: white; }
         .btn-secondary { background: #4b5563; color: white; }
         .btn-csv { background: #10b981; color: white; margin: 25px 0; }
-        .shop-name-display { color: #007bff; font-weight: bold; margin-top: 10px; font-size: 1.1em; background: #e7f1ff; padding: 12px; border-radius: 8px; text-align: center; }
-        .shop-list-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-top: 10px; }
-        .shop-item { background: #fff; padding: 8px; border-radius: 6px; border: 1px solid #eee; font-size: 13px; }
+        .shop-name-display { color: #007bff; font-weight: bold; margin-top: 10px; background: #e7f1ff; padding: 12px; border-radius: 8px; text-align: center; }
         #confirm-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; }
-        #confirm-modal { background: var(--card-bg); width: 90%; padding: 25px; border-radius: 20px; text-align: center; }
-        table { width: 100%; border-collapse: collapse; font-size: 0.8em; margin-top: 10px; }
-        th, td { border-bottom: 1px solid var(--input-border); padding: 8px; text-align: left; }
+        #confirm-modal { background: #fff; width: 90%; padding: 25px; border-radius: 20px; text-align: center; }
         .seal-tag { display: inline-block; background: #e2e8f0; padding: 4px 10px; border-radius: 4px; margin: 4px; font-size: 14px; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.8em; margin-top: 10px; }
+        th, td { border-bottom: 1px solid #ddd; padding: 8px; text-align: left; }
     </style>
 </head>
 <body>
@@ -37,7 +32,7 @@
         <div id="confirm-modal">
             <div id="scanned-display" style="font-size:32px; font-weight:bold; color:#ff4500; margin-bottom:20px;">----</div>
             <button class="btn-success" onclick="approveValue()">OK</button>
-            <button class="btn-danger" onclick="rejectValue()" style="background:#ef4444; margin-top:10px;">戻る</button>
+            <button class="btn-secondary" onclick="rejectValue()" style="margin-top:10px;">戻る</button>
         </div>
     </div>
 
@@ -47,21 +42,20 @@
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
         <div id="shop-name" class="shop-name-display">店舗を選択してください</div>
         <button class="btn-primary" onclick="startApp()">点検開始</button>
-        <div class="shop-list-grid" id="display-shop-list"></div>
     </div>
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="status-header">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
-                <button class="btn-reload-cam" onclick="initScanner()">🔄 カメラ再起動</button>
+                <button onclick="initScanner()" style="width:auto; margin-top:0; padding:5px 10px; background:#ff9800; color:white; font-size:12px;">🔄 再起動</button>
             </div>
             <div id="reader-container">
                 <div id="reader-wrapper"><div id="reader"></div></div>
-                <button id="btn-skip" class="btn-secondary" style="display:none;" onclick="skipStep()">主基板なし/封印なし</button>
+                <button id="btn-skip" class="btn-secondary" style="display:none;" onclick="skipStep()">なし/スキップ</button>
             </div>
             <div id="normal-input-area" style="margin-top:10px;">
-                <input type="number" inputmode="numeric" id="manual-input" placeholder="台番手入力">
+                <input type="number" inputmode="numeric" id="manual-input" placeholder="手入力確定">
                 <button class="btn-primary" onclick="handleManualInput()">確定</button>
             </div>
             <div id="rom-input-area" style="display:none; margin-top:10px;">
@@ -90,14 +84,6 @@
         let staffId, shopId, currentStep = 1, currentData = { seals: [] }, allData = [], html5QrCode, pendingValue = "";
         let prevRom1 = "", prevRom3 = "";
 
-        window.onload = () => {
-            const listGrid = document.getElementById('display-shop-list');
-            Object.keys(shopList).sort().forEach(id => {
-                const item = document.createElement('div'); item.className = 'shop-item';
-                item.innerText = `${id}: ${shopList[id]}`; listGrid.appendChild(item);
-            });
-        };
-
         function updateShopName() {
             let id = document.getElementById('shop-id').value;
             if(id.length === 1 && id !== "") id = "0" + id; 
@@ -116,8 +102,21 @@
 
         async function initScanner() {
             if(html5QrCode) { try { await html5QrCode.stop(); } catch(e) {} }
-            html5QrCode = new Html5Qrcode("reader");
-            const config = { fps: 30, qrbox: (w, h) => { return { width: w * 0.8, height: h * 0.6 }; } };
+            html5QrCode = new Html5Qrcode("reader", { 
+                // 実験的機能: ブラウザ標準のスキャンエンジンを使用
+                useBarCodeDetectorIfSupported: true 
+            });
+            const config = { 
+                fps: 30,
+                // iPhoneのピントを合いやすくするためのアスペクト比
+                videoConstraints: {
+                    facingMode: "environment",
+                    width: { min: 640, ideal: 1280, max: 1920 },
+                    height: { min: 480, ideal: 720, max: 1080 },
+                    focusMode: "continuous"
+                },
+                qrbox: (w, h) => { return { width: w * 0.7, height: h * 0.7 }; }
+            };
             html5QrCode.start({ facingMode: "environment" }, config, (text) => {
                 html5QrCode.pause(); showConfirmation(text);
             }).catch(err => console.error(err));
@@ -191,25 +190,15 @@
             updateUI();
         }
 
-        // --- BOM付きUTF-8 カンマ区切りダウンロード ---
         function downloadCSV() {
             if(allData.length === 0) return alert("データなし");
             const sName = shopList[shopId] || "カスタム(" + shopId + ")";
-            
-            // ヘッダーとデータ（カンマ区切り）
             let csvContent = "社員,店舗,時間,台番,主,ROM,封印\r\n";
-            allData.forEach(d => {
-                csvContent += `${staffId},${sName},${d.time},${d.machineId},${d.mainBoardId},${d.romId},"${d.sealsText}"\r\n`;
-            });
-
-            // BOM (\uFEFF) を付与してBlob作成
+            allData.forEach(d => { csvContent += `${staffId},${sName},${d.time},${d.machineId},${d.mainBoardId},${d.romId},"${d.sealsText}"\r\n`; });
             const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
             const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8' });
-            
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = `点検_${shopId}_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`;
-            a.click();
+            const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+            a.download = `点検_${shopId}_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`; a.click();
         }
     </script>
 </body>
