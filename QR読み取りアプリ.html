@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v9.8</title>
+    <title>点検スキャナー v9.9</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; }
@@ -65,7 +65,7 @@
                 <div style="display:flex; gap:5px;">
                     <input type="number" inputmode="numeric" id="rom-1" style="flex:1;" placeholder="数字" onclick="this.select();">
                     <select id="rom-select" style="flex:1;"><option value="KY">KY</option><option value="EAI">EAI</option></select>
-                    <input type="number" inputmode="numeric" id="rom-3" style="flex:1;" placeholder="数字" onclick="this.select();">
+                    <input type="number" inputmode="numeric" id="rom-3" style="flex:1;" placeholder="数字(空欄可)" onclick="this.select();">
                 </div>
                 <button class="btn-primary" onclick="handleManualInput()">ROM確定</button>
             </div>
@@ -145,8 +145,17 @@
 
         function handleManualInput() {
             if(currentStep === 3) {
-                const r1 = document.getElementById('rom-1').value; const r2 = document.getElementById('rom-select').value; const r3 = document.getElementById('rom-3').value;
-                if(r1 && r3) { prevRom1 = r1; prevRom3 = r3; showConfirmation(r1+r2+r3); }
+                const r1 = document.getElementById('rom-1').value; 
+                const r2 = document.getElementById('rom-select').value; 
+                const r3 = document.getElementById('rom-3').value;
+                // ROM1（メーカー数字）さえあれば、ROM3が空欄でも確定可能に変更
+                if(r1) { 
+                    prevRom1 = r1; 
+                    prevRom3 = r3; 
+                    showConfirmation(r1 + r2 + r3); 
+                } else {
+                    alert("メーカー番号を入力してください");
+                }
             } else {
                 const val = document.getElementById('manual-input').value; if(val) { showConfirmation(val); document.getElementById('manual-input').value = ""; }
             }
@@ -165,7 +174,9 @@
             document.getElementById('history-tbody').insertAdjacentHTML('afterbegin', row);
             currentStep = 1; currentData = { seals: [] };
             document.getElementById('seal-list-display').innerHTML = "";
-            document.getElementById('rom-1').value = prevRom1; document.getElementById('rom-3').value = prevRom3;
+            // 次の台のためにROM値を引き継ぎ
+            document.getElementById('rom-1').value = prevRom1; 
+            document.getElementById('rom-3').value = prevRom3;
             updateUI();
         }
 
@@ -175,27 +186,17 @@
             updateUI();
         }
 
-        // --- SHIFT-JIS (Excel最強) への変換処理 ---
         function downloadCSV() {
             if(allData.length === 0) return alert("データなし");
             const sName = shopList[shopId] || "カスタム(" + shopId + ")";
-            
-            // カンマ区切りの文字列を作成
             let csvContent = "社員,店舗,時間,台番,主,ROM,封印\r\n";
-            allData.forEach(d => {
-                csvContent += `${staffId},${sName},${d.time},${d.machineId},${d.mainBoardId},${d.romId},"${d.sealsText}"\r\n`;
-            });
-
-            // 文字コード変換 (UTF-8 -> Shift-JIS)
+            allData.forEach(d => { csvContent += `${staffId},${sName},${d.time},${d.machineId},${d.mainBoardId},${d.romId},"${d.sealsText}"\r\n`; });
             const unicodeArray = Encoding.stringToCode(csvContent);
             const sjisArray = Encoding.convert(unicodeArray, 'SJIS', 'UNICODE');
             const uint8Array = new Uint8Array(sjisArray);
-
             const blob = new Blob([uint8Array], { type: 'text/csv;charset=shift-jis' });
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = `点検_${shopId}_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`;
-            a.click();
+            const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+            a.download = `点検_${shopId}_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`; a.click();
         }
     </script>
 </body>
