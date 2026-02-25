@@ -3,19 +3,24 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v9.1</title>
+    <title>点検スキャナー v9.2</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; --input-bg: #ffffff; --input-border: #dddddd; }
         body { font-family: sans-serif; margin: 0; padding: 8px; background: var(--bg-color); color: var(--text-color); }
         .card { background: var(--card-bg); padding: 12px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 10px; }
-        #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; min-height: 80px; } 
-        #reader video { object-fit: cover; }
+        
+        /* カメラ表示エリア：高さは抑えつつ、中の映像はしっかり映るように */
+        #reader-wrapper { position: relative; width: 100%; border-radius: 8px; overflow: hidden; background: #000; margin-bottom: 8px; }
+        #reader { width: 100%; height: 120px; } /* 表示上の高さを少しだけ確保（80pxだとQR全体が入りにくいため） */
+        
         .status-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
         .status-badge { padding: 4px 12px; border-radius: 20px; background: #007bff; color: white; font-weight: bold; font-size: 14px; }
         .btn-reload-cam { padding: 6px 12px; border-radius: 8px; background: #ff9800; color: white; font-size: 12px; border: none; font-weight: bold; }
+        
         input, select { width: 100%; height: 45px; padding: 8px; background: var(--input-bg); color: var(--text-color); border: 2px solid var(--input-border); border-radius: 8px; box-sizing: border-box; font-size: 18px; margin-top: 5px; }
         button { width: 100%; padding: 12px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; margin-top: 8px; }
+        
         .btn-primary { background: #3b82f6; color: white; }
         .btn-success { background: #22c55e; color: white; }
         .btn-danger { background: #ef4444; color: white; }
@@ -67,7 +72,9 @@
             </div>
             
             <div id="reader-container">
-                <div id="reader"></div>
+                <div id="reader-wrapper">
+                    <div id="reader"></div>
+                </div>
                 <button id="btn-skip" class="btn-secondary" style="display:none; padding: 10px;" onclick="skipStep()">主基板なし/封印なし</button>
                 <button class="btn-ai" id="ai-btn" onclick="captureAndOCR()">📸 AI数字読取</button>
             </div>
@@ -87,7 +94,6 @@
             </div>
 
             <div id="seal-list-display" style="margin-top:5px;"></div>
-
             <button id="btn-finish" class="btn-success" style="display:none;" onclick="finishMachine()">登録して次の台へ</button>
             <button id="btn-back" class="btn-secondary" style="display:none; padding: 10px;" onclick="goBack()">前へ戻る</button>
         </div>
@@ -98,7 +104,6 @@
                 <tbody id="history-tbody"></tbody>
             </table>
         </div>
-
         <button class="btn-csv" onclick="downloadCSV()">現在のデータをCSV保存</button>
     </div>
 
@@ -110,9 +115,7 @@
             const listGrid = document.getElementById('display-shop-list');
             Object.keys(shopList).sort().forEach(id => {
                 const item = document.createElement('div'); 
-                item.className = 'shop-item';
-                item.innerText = `${id}: ${shopList[id]}`; 
-                listGrid.appendChild(item);
+                item.className = 'shop-item'; item.innerText = `${id}: ${shopList[id]}`; listGrid.appendChild(item);
             });
             const savedKey = localStorage.getItem('gemini_api_key');
             if (savedKey) document.getElementById('gemini-key').value = savedKey;
@@ -144,7 +147,13 @@
 
         function startScanner() {
             html5QrCode = new Html5Qrcode("reader");
-            html5QrCode.start({ facingMode: "environment" }, { fps: 20, aspectRatio: 2.0 }, (text) => {
+            // 【改善点】解像度とフォーカス範囲を最適化
+            const config = { 
+                fps: 30, // フレームレートを上げて滑らかに
+                qrbox: { width: 250, height: 100 }, // スキャン範囲をスリット状に指定
+                aspectRatio: 1.0 // 内部解像度は正方形を維持してピント性能を確保
+            };
+            html5QrCode.start({ facingMode: "environment" }, config, (text) => {
                 html5QrCode.pause(); showConfirmation(text);
             }).catch(err => console.error(err));
         }
@@ -175,8 +184,7 @@
         function showConfirmation(value) {
             if(currentStep === 4 && currentData.seals.includes(value)) {
                 alert("警告：この封印シールは既にスキャン済みです！");
-                html5QrCode.resume();
-                return;
+                html5QrCode.resume(); return;
             }
             pendingValue = value;
             document.getElementById('scanned-display').innerText = value;
@@ -191,8 +199,7 @@
             else if(currentStep === 2) { currentData.mainBoardId = pendingValue; currentStep = 3; }
             else if(currentStep === 3) { currentData.romId = pendingValue; currentStep = 4; }
             else if(currentStep === 4) { currentData.seals.push(pendingValue); updateSealDisplay(); }
-            updateUI();
-            html5QrCode.resume();
+            updateUI(); html5QrCode.resume();
         }
 
         function rejectValue() {
@@ -219,9 +226,7 @@
 
         function handleManualInput() {
             if(currentStep === 3) {
-                const r1 = document.getElementById('rom-1').value; 
-                const r2 = document.getElementById('rom-select').value; 
-                const r3 = document.getElementById('rom-3').value;
+                const r1 = document.getElementById('rom-1').value; const r2 = document.getElementById('rom-select').value; const r3 = document.getElementById('rom-3').value;
                 if(r1 && r3) showConfirmation(r1+r2+r3);
             } else {
                 const val = document.getElementById('manual-input').value;
@@ -241,16 +246,8 @@
             allData.push(dataToPush);
             const row = `<tr><td>${dataToPush.machineId}</td><td>${dataToPush.mainBoardId}</td><td>${dataToPush.romId}</td><td>${sealsText}</td></tr>`;
             document.getElementById('history-tbody').insertAdjacentHTML('afterbegin', row);
-            
-            // 状態リセット
-            currentStep = 1; 
-            currentData = { seals: [] }; 
+            currentStep = 1; currentData = { seals: [] }; 
             document.getElementById('seal-list-display').innerHTML = "";
-            
-            // ROM1とROM3の値はクリアせずに維持（前回値を初期値とする）
-            // document.getElementById('rom-1').value = "";  <-- ここをコメントアウト
-            // document.getElementById('rom-3').value = "";  <-- ここをコメントアウト
-            
             updateUI();
         }
 
