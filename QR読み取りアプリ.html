@@ -8,7 +8,11 @@
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; }
         body { font-family: sans-serif; margin: 0; padding: 10px; background: var(--bg-color); }
-        .card { background: var(--card-bg); padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 12px; }
+        .card { background: var(--card-bg); padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 12px; position: relative; }
+        
+        /* バージョン表示用のスタイル */
+        .version-tag { position: absolute; top: 8px; right: 12px; font-size: 10px; color: #999; }
+
         #reader-wrapper { width: 100%; border-radius: 10px; overflow: hidden; background: #000; border: 3px solid #3b82f6; position: relative; }
         #reader { width: 100%; min-height: 280px; } 
         .status-badge { padding: 6px 15px; border-radius: 20px; background: #007bff; color: white; font-weight: bold; }
@@ -39,6 +43,7 @@
     </div>
 
     <div id="setup-screen" class="card">
+        <div class="version-tag">v9.9</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -49,6 +54,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
+            <div class="version-tag">v9.9</div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
                 <button onclick="initScanner()" style="width:auto; margin-top:0; padding:5px 10px; background:#ff9800; color:white; font-size:12px; border-radius:6px;">🔄 再起動</button>
@@ -148,14 +154,8 @@
                 const r1 = document.getElementById('rom-1').value; 
                 const r2 = document.getElementById('rom-select').value; 
                 const r3 = document.getElementById('rom-3').value;
-                // ROM1（メーカー数字）さえあれば、ROM3が空欄でも確定可能に変更
-                if(r1) { 
-                    prevRom1 = r1; 
-                    prevRom3 = r3; 
-                    showConfirmation(r1 + r2 + r3); 
-                } else {
-                    alert("メーカー番号を入力してください");
-                }
+                if(r1) { prevRom1 = r1; prevRom3 = r3; showConfirmation(r1 + r2 + r3); }
+                else { alert("メーカー番号を入力してください"); }
             } else {
                 const val = document.getElementById('manual-input').value; if(val) { showConfirmation(val); document.getElementById('manual-input').value = ""; }
             }
@@ -174,9 +174,7 @@
             document.getElementById('history-tbody').insertAdjacentHTML('afterbegin', row);
             currentStep = 1; currentData = { seals: [] };
             document.getElementById('seal-list-display').innerHTML = "";
-            // 次の台のためにROM値を引き継ぎ
-            document.getElementById('rom-1').value = prevRom1; 
-            document.getElementById('rom-3').value = prevRom3;
+            document.getElementById('rom-1').value = prevRom1; document.getElementById('rom-3').value = prevRom3;
             updateUI();
         }
 
