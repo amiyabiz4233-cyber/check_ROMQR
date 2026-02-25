@@ -3,14 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v9.6</title>
+    <title>点検スキャナー v9.8</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; }
         body { font-family: sans-serif; margin: 0; padding: 10px; background: var(--bg-color); }
         .card { background: var(--card-bg); padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 12px; }
         #reader-wrapper { width: 100%; border-radius: 10px; overflow: hidden; background: #000; border: 3px solid #3b82f6; position: relative; }
-        #reader { width: 100%; min-height: 300px; } 
+        #reader { width: 100%; min-height: 280px; } 
         .status-badge { padding: 6px 15px; border-radius: 20px; background: #007bff; color: white; font-weight: bold; }
         input, select { width: 100%; height: 50px; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 18px; margin-top: 5px; box-sizing: border-box; }
         button { width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; margin-top: 10px; }
@@ -19,6 +19,8 @@
         .btn-secondary { background: #4b5563; color: white; }
         .btn-csv { background: #10b981; color: white; margin: 25px 0; }
         .shop-name-display { color: #007bff; font-weight: bold; margin-top: 10px; background: #e7f1ff; padding: 12px; border-radius: 8px; text-align: center; }
+        .shop-list-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 10px; }
+        .shop-item { background: #fff; padding: 6px; border-radius: 6px; border: 1px solid #eee; font-size: 12px; color: #555; }
         #confirm-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; }
         #confirm-modal { background: #fff; width: 90%; padding: 25px; border-radius: 20px; text-align: center; }
         .seal-tag { display: inline-block; background: #e2e8f0; padding: 4px 10px; border-radius: 4px; margin: 4px; font-size: 14px; font-weight: bold; }
@@ -42,20 +44,21 @@
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
         <div id="shop-name" class="shop-name-display">店舗を選択してください</div>
         <button class="btn-primary" onclick="startApp()">点検開始</button>
+        <div class="shop-list-grid" id="display-shop-list"></div>
     </div>
 
     <div id="main-app" style="display:none;">
         <div class="card">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
-                <button onclick="initScanner()" style="width:auto; margin-top:0; padding:5px 10px; background:#ff9800; color:white; font-size:12px;">🔄 再起動</button>
+                <button onclick="initScanner()" style="width:auto; margin-top:0; padding:5px 10px; background:#ff9800; color:white; font-size:12px; border-radius:6px;">🔄 再起動</button>
             </div>
             <div id="reader-container">
                 <div id="reader-wrapper"><div id="reader"></div></div>
-                <button id="btn-skip" class="btn-secondary" style="display:none;" onclick="skipStep()">なし/スキップ</button>
+                <button id="btn-skip" class="btn-secondary" style="display:none;" onclick="skipStep()">主基板/封印なし</button>
             </div>
             <div id="normal-input-area" style="margin-top:10px;">
-                <input type="number" inputmode="numeric" id="manual-input" placeholder="手入力確定">
+                <input type="number" inputmode="numeric" id="manual-input" placeholder="台番手入力">
                 <button class="btn-primary" onclick="handleManualInput()">確定</button>
             </div>
             <div id="rom-input-area" style="display:none; margin-top:10px;">
@@ -70,19 +73,23 @@
             <button id="btn-finish" class="btn-success" style="display:none;" onclick="finishMachine()">登録して次の台へ</button>
             <button id="btn-back" class="btn-secondary" style="display:none;" onclick="goBack()">前へ戻る</button>
         </div>
-        <div class="card" style="overflow-x:auto;">
-            <table id="history-table">
-                <thead><tr><th>台番</th><th>主</th><th>ROM</th><th>封印</th></tr></thead>
-                <tbody id="history-tbody"></tbody>
-            </table>
-        </div>
+        <div class="card" style="overflow-x:auto;"><table id="history-table"><thead><tr><th>台番</th><th>主</th><th>ROM</th><th>封印</th></tr></thead><tbody id="history-tbody"></tbody></table></div>
         <button class="btn-csv" onclick="downloadCSV()">現在のデータをCSV保存</button>
     </div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
     <script>
         const shopList = { "01": "成田", "09": "潮来", "16": "木更津", "18": "神栖", "20": "多古", "22": "葉山", "23": "鹿嶋2", "28": "八日市場", "34": "奥野谷", "43": "大和", "44": "淵野辺", "13": "小見川", "25": "鹿嶋1", "26": "旭", "27": "八街", "29": "東金", "30": "富里", "31": "文違", "32": "今宮", "33": "市原", "35": "松戸", "36": "石岡", "37": "稲毛", "38": "佐原", "39": "川越", "40": "町田", "41": "セン南", "45": "ウイング" };
         let staffId, shopId, currentStep = 1, currentData = { seals: [] }, allData = [], html5QrCode, pendingValue = "";
         let prevRom1 = "", prevRom3 = "";
+
+        window.onload = () => {
+            const listGrid = document.getElementById('display-shop-list');
+            Object.keys(shopList).sort().forEach(id => {
+                const item = document.createElement('div'); item.className = 'shop-item';
+                item.innerText = `${id}: ${shopList[id]}`; listGrid.appendChild(item);
+            });
+        };
 
         function updateShopName() {
             let id = document.getElementById('shop-id').value;
@@ -102,33 +109,14 @@
 
         async function initScanner() {
             if(html5QrCode) { try { await html5QrCode.stop(); } catch(e) {} }
-            html5QrCode = new Html5Qrcode("reader", { 
-                // 実験的機能: ブラウザ標準のスキャンエンジンを使用
-                useBarCodeDetectorIfSupported: true 
-            });
-            const config = { 
-                fps: 30,
-                // iPhoneのピントを合いやすくするためのアスペクト比
-                videoConstraints: {
-                    facingMode: "environment",
-                    width: { min: 640, ideal: 1280, max: 1920 },
-                    height: { min: 480, ideal: 720, max: 1080 },
-                    focusMode: "continuous"
-                },
-                qrbox: (w, h) => { return { width: w * 0.7, height: h * 0.7 }; }
-            };
-            html5QrCode.start({ facingMode: "environment" }, config, (text) => {
-                html5QrCode.pause(); showConfirmation(text);
-            }).catch(err => console.error(err));
+            html5QrCode = new Html5Qrcode("reader", { useBarCodeDetectorIfSupported: true });
+            const config = { fps: 30, videoConstraints: { facingMode: "environment" }, qrbox: (w, h) => { return { width: w * 0.75, height: h * 0.75 }; } };
+            html5QrCode.start({ facingMode: "environment" }, config, (text) => { html5QrCode.pause(); showConfirmation(text); }).catch(e => console.error(e));
         }
 
         function showConfirmation(value) {
-            if(currentStep === 4 && currentData.seals.includes(value)) {
-                alert("警告：重複スキャンです！"); html5QrCode.resume(); return;
-            }
-            pendingValue = value;
-            document.getElementById('scanned-display').innerText = value;
-            document.getElementById('confirm-overlay').style.display = 'flex';
+            if(currentStep === 4 && currentData.seals.includes(value)) { alert("警告：重複スキャンです！"); html5QrCode.resume(); return; }
+            pendingValue = value; document.getElementById('scanned-display').innerText = value; document.getElementById('confirm-overlay').style.display = 'flex';
         }
 
         function approveValue() {
@@ -153,17 +141,14 @@
             document.getElementById('status').innerText = titles[currentStep];
         }
 
-        function updateSealDisplay() {
-            document.getElementById('seal-list-display').innerHTML = currentData.seals.map(s => `<span class="seal-tag">${s}</span>`).join('');
-        }
+        function updateSealDisplay() { document.getElementById('seal-list-display').innerHTML = currentData.seals.map(s => `<span class="seal-tag">${s}</span>`).join(''); }
 
         function handleManualInput() {
             if(currentStep === 3) {
                 const r1 = document.getElementById('rom-1').value; const r2 = document.getElementById('rom-select').value; const r3 = document.getElementById('rom-3').value;
                 if(r1 && r3) { prevRom1 = r1; prevRom3 = r3; showConfirmation(r1+r2+r3); }
             } else {
-                const val = document.getElementById('manual-input').value;
-                if(val) { showConfirmation(val); document.getElementById('manual-input').value = ""; }
+                const val = document.getElementById('manual-input').value; if(val) { showConfirmation(val); document.getElementById('manual-input').value = ""; }
             }
         }
 
@@ -190,15 +175,27 @@
             updateUI();
         }
 
+        // --- SHIFT-JIS (Excel最強) への変換処理 ---
         function downloadCSV() {
             if(allData.length === 0) return alert("データなし");
             const sName = shopList[shopId] || "カスタム(" + shopId + ")";
+            
+            // カンマ区切りの文字列を作成
             let csvContent = "社員,店舗,時間,台番,主,ROM,封印\r\n";
-            allData.forEach(d => { csvContent += `${staffId},${sName},${d.time},${d.machineId},${d.mainBoardId},${d.romId},"${d.sealsText}"\r\n`; });
-            const bom = new Uint8Array([0xEF, 0xBB, 0xBF]);
-            const blob = new Blob([bom, csvContent], { type: 'text/csv;charset=utf-8' });
-            const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-            a.download = `点検_${shopId}_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`; a.click();
+            allData.forEach(d => {
+                csvContent += `${staffId},${sName},${d.time},${d.machineId},${d.mainBoardId},${d.romId},"${d.sealsText}"\r\n`;
+            });
+
+            // 文字コード変換 (UTF-8 -> Shift-JIS)
+            const unicodeArray = Encoding.stringToCode(csvContent);
+            const sjisArray = Encoding.convert(unicodeArray, 'SJIS', 'UNICODE');
+            const uint8Array = new Uint8Array(sjisArray);
+
+            const blob = new Blob([uint8Array], { type: 'text/csv;charset=shift-jis' });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = `点検_${shopId}_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`;
+            a.click();
         }
     </script>
 </body>
