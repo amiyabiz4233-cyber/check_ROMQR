@@ -67,7 +67,10 @@
             <div id="rom-input-area" style="display:none; margin-top:10px;">
                 <div style="display:flex; gap:5px;">
                     <input type="number" inputmode="numeric" id="rom-1" style="flex:1;" placeholder="数字" onclick="this.select();">
-                    <select id="rom-select" style="flex:1;"><option value="KY">KY</option><option value="EAI">EAI</option></select>
+                    <select id="rom-select" style="flex:1;" onchange="handleRomTypeChange()">
+                        <option value="KY">KY</option>
+                        <option value="EAI">EAI</option>
+                    </select>
                     <input type="number" inputmode="numeric" id="rom-3" style="flex:1;" placeholder="数字(空欄可)" onclick="this.select();">
                 </div>
                 <button class="btn-primary" onclick="handleManualInput()">ROM確定</button>
@@ -83,20 +86,25 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
     <script>
         const shopList = { "01": "成田", "09": "潮来", "16": "木更津", "18": "神栖", "20": "多古", "22": "葉山", "23": "鹿嶋2", "28": "八日市場", "34": "奥野谷", "43": "大和", "44": "淵野辺", "13": "小見川", "25": "鹿嶋1", "26": "旭", "27": "八街", "29": "東金", "30": "富里", "31": "文違", "32": "今宮", "33": "市原", "35": "松戸", "36": "石岡", "37": "稲毛", "38": "佐原", "39": "川越", "40": "町田", "41": "セン南", "45": "ウイング" };
+        const MAIL_TO = "densanFGA@bishop777.com";
+
         let staffId, shopId, currentStep = 1, currentData = { seals: [] }, allData = [], html5QrCode, pendingValue = "";
         let prevRom1 = "", prevRom3 = "";
 
         window.onload = () => {
             const listGrid = document.getElementById('display-shop-list');
             Object.keys(shopList).sort().forEach(id => {
-                const item = document.createElement('div'); item.className = 'shop-item';
-                item.innerText = `${id}: ${shopList[id]}`; listGrid.appendChild(item);
+                const item = document.createElement('div');
+                item.className = 'shop-item';
+                item.innerText = `${id}: ${shopList[id]}`;
+                listGrid.appendChild(item);
             });
+            handleRomTypeChange();
         };
 
         function updateShopName() {
             let id = document.getElementById('shop-id').value;
-            if(id.length === 1 && id !== "") id = "0" + id; 
+            if(id.length === 1 && id !== "") id = "0" + id;
             document.getElementById('shop-name').innerText = shopList[id] || (id === "" ? "店舗を選択してください" : "カスタム(" + id + ")");
         }
 
@@ -107,31 +115,89 @@
             if(!staffId || !shopId) return alert("社員番号と店舗番号を入力してください");
             document.getElementById('setup-screen').style.display = 'none';
             document.getElementById('main-app').style.display = 'block';
-            updateUI(); initScanner();
+            updateUI();
+            initScanner();
         }
 
         async function initScanner() {
-            if(html5QrCode) { try { await html5QrCode.stop(); } catch(e) {} }
+            if(html5QrCode) {
+                try { await html5QrCode.stop(); } catch(e) {}
+            }
             html5QrCode = new Html5Qrcode("reader", { useBarCodeDetectorIfSupported: true });
-            const config = { fps: 30, videoConstraints: { facingMode: "environment" }, qrbox: (w, h) => { return { width: w * 0.75, height: h * 0.75 }; } };
-            html5QrCode.start({ facingMode: "environment" }, config, (text) => { html5QrCode.pause(); showConfirmation(text); }).catch(e => console.error(e));
+            const config = {
+                fps: 30,
+                videoConstraints: { facingMode: "environment" },
+                qrbox: (w, h) => { return { width: w * 0.75, height: h * 0.75 }; }
+            };
+            html5QrCode.start(
+                { facingMode: "environment" },
+                config,
+                (text) => {
+                    html5QrCode.pause();
+                    showConfirmation(text);
+                }
+            ).catch(e => console.error(e));
+        }
+
+        function isValidMachineId(value) {
+            if(!/^\d+$/.test(value)) return false;
+            const num = Number(value);
+            return Number.isInteger(num) && num >= 0 && num <= 999999;
+        }
+
+        function handleRomTypeChange() {
+            const romSelect = document.getElementById('rom-select');
+            const rom3 = document.getElementById('rom-3');
+            if(!romSelect || !rom3) return;
+
+            if(romSelect.value === "EAI") {
+                rom3.value = "";
+            }
         }
 
         function showConfirmation(value) {
-            if(currentStep === 4 && currentData.seals.includes(value)) { alert("警告：重複スキャンです！"); html5QrCode.resume(); return; }
-            pendingValue = value; document.getElementById('scanned-display').innerText = value; document.getElementById('confirm-overlay').style.display = 'flex';
+            if(currentStep === 1) {
+                if(!isValidMachineId(value)) {
+                    alert("台番QRは数字の0～999999の範囲のみ読み取り可能です");
+                    html5QrCode.resume();
+                    return;
+                }
+            }
+
+            if(currentStep === 4 && currentData.seals.includes(value)) {
+                alert("警告：重複スキャンです！");
+                html5QrCode.resume();
+                return;
+            }
+
+            pendingValue = value;
+            document.getElementById('scanned-display').innerText = value;
+            document.getElementById('confirm-overlay').style.display = 'flex';
         }
 
         function approveValue() {
             document.getElementById('confirm-overlay').style.display = 'none';
-            if(currentStep === 1) { currentData.machineId = pendingValue; currentStep = 2; }
-            else if(currentStep === 2) { currentData.mainBoardId = pendingValue; currentStep = 3; }
-            else if(currentStep === 3) { currentData.romId = pendingValue; currentStep = 4; }
-            else if(currentStep === 4) { currentData.seals.push(pendingValue); updateSealDisplay(); }
-            updateUI(); html5QrCode.resume();
+            if(currentStep === 1) {
+                currentData.machineId = pendingValue;
+                currentStep = 2;
+            } else if(currentStep === 2) {
+                currentData.mainBoardId = pendingValue;
+                currentStep = 3;
+            } else if(currentStep === 3) {
+                currentData.romId = pendingValue;
+                currentStep = 4;
+            } else if(currentStep === 4) {
+                currentData.seals.push(pendingValue);
+                updateSealDisplay();
+            }
+            updateUI();
+            html5QrCode.resume();
         }
 
-        function rejectValue() { document.getElementById('confirm-overlay').style.display = 'none'; html5QrCode.resume(); }
+        function rejectValue() {
+            document.getElementById('confirm-overlay').style.display = 'none';
+            html5QrCode.resume();
+        }
 
         function updateUI() {
             document.getElementById('btn-skip').style.display = (currentStep === 2 || currentStep === 4) ? 'block' : 'none';
@@ -144,17 +210,24 @@
             document.getElementById('status').innerText = titles[currentStep];
         }
 
-        function updateSealDisplay() { document.getElementById('seal-list-display').innerHTML = currentData.seals.map(s => `<span class="seal-tag">${s}</span>`).join(''); }
+        function updateSealDisplay() {
+            document.getElementById('seal-list-display').innerHTML = currentData.seals.map(s => `<span class="seal-tag">${s}</span>`).join('');
+        }
 
         function handleManualInput() {
             if(currentStep === 3) {
-                const r1 = document.getElementById('rom-1').value; 
-                const r2 = document.getElementById('rom-select').value; 
-                const r3 = document.getElementById('rom-3').value;
-                if(r1) { 
-                    prevRom1 = r1; 
-                    prevRom3 = r3; 
-                    // 仕様変更：ROM確定時は確認ステップを飛ばして即保存
+                const r1 = document.getElementById('rom-1').value;
+                const r2 = document.getElementById('rom-select').value;
+                let r3 = document.getElementById('rom-3').value;
+
+                if(r2 === "EAI") {
+                    r3 = "";
+                    document.getElementById('rom-3').value = "";
+                }
+
+                if(r1) {
+                    prevRom1 = r1;
+                    prevRom3 = r3;
                     currentData.romId = r1 + r2 + r3;
                     currentStep = 4;
                     updateUI();
@@ -162,13 +235,28 @@
                     alert("メーカー番号を入力してください");
                 }
             } else {
-                const val = document.getElementById('manual-input').value; if(val) { showConfirmation(val); document.getElementById('manual-input').value = ""; }
+                const val = document.getElementById('manual-input').value;
+                if(!val) return;
+
+                if(currentStep === 1 && !isValidMachineId(val)) {
+                    alert("台番は数字の0～999999の範囲で入力してください");
+                    return;
+                }
+
+                showConfirmation(val);
+                document.getElementById('manual-input').value = "";
             }
         }
 
         function skipStep() {
-            if(currentStep === 2) { currentData.mainBoardId = "なし"; currentStep = 3; }
-            else if(currentStep === 4) { if(currentData.seals.length === 0) currentData.seals.push("なし"); finishMachine(); return; }
+            if(currentStep === 2) {
+                currentData.mainBoardId = "なし";
+                currentStep = 3;
+            } else if(currentStep === 4) {
+                if(currentData.seals.length === 0) currentData.seals.push("なし");
+                finishMachine();
+                return;
+            }
             updateUI();
         }
 
@@ -177,29 +265,77 @@
             allData.push({ ...currentData, sealsText: sealsText, time: new Date().toLocaleTimeString() });
             const row = `<tr><td>${currentData.machineId}</td><td>${currentData.mainBoardId}</td><td>${currentData.romId}</td><td>${sealsText}</td></tr>`;
             document.getElementById('history-tbody').insertAdjacentHTML('afterbegin', row);
-            currentStep = 1; currentData = { seals: [] };
+
+            currentStep = 1;
+            currentData = { seals: [] };
             document.getElementById('seal-list-display').innerHTML = "";
-            document.getElementById('rom-1').value = prevRom1; document.getElementById('rom-3').value = prevRom3;
+            document.getElementById('rom-1').value = prevRom1;
+            document.getElementById('rom-3').value = prevRom3;
+            handleRomTypeChange();
             updateUI();
         }
 
-        function goBack() { 
-            if(currentStep === 4 && currentData.seals.length > 0) { currentData.seals.pop(); updateSealDisplay(); }
-            else if(currentStep > 1) { currentStep--; }
+        function goBack() {
+            if(currentStep === 4 && currentData.seals.length > 0) {
+                currentData.seals.pop();
+                updateSealDisplay();
+            } else if(currentStep > 1) {
+                currentStep--;
+            }
             updateUI();
         }
 
-        function downloadCSV() {
-            if(allData.length === 0) return alert("データなし");
-            // 仕様変更：CSVの店舗列は店舗名(sName)ではなく店舗番号(shopId)にする
+        function buildCsvBlobAndFileName() {
             let csvContent = "社員,店舗,時間,台番,主,ROM,封印\r\n";
-            allData.forEach(d => { csvContent += `${staffId},${shopId},${d.time},${d.machineId},${d.mainBoardId},${d.romId},"${d.sealsText}"\r\n`; });
+            allData.forEach(d => {
+                csvContent += `${staffId},${shopId},${d.time},${d.machineId},${d.mainBoardId},${d.romId},"${d.sealsText}"\r\n`;
+            });
+
             const unicodeArray = Encoding.stringToCode(csvContent);
             const sjisArray = Encoding.convert(unicodeArray, 'SJIS', 'UNICODE');
             const uint8Array = new Uint8Array(sjisArray);
             const blob = new Blob([uint8Array], { type: 'text/csv;charset=shift-jis' });
-            const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-            a.download = `点検_${shopId}_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`; a.click();
+            const fileName = `点検_${shopId}_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`;
+
+            return { blob, fileName };
+        }
+
+        function saveBlobAsFile(blob, fileName) {
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = fileName;
+            a.click();
+            setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+        }
+
+        async function downloadCSV() {
+            if(allData.length === 0) return alert("データなし");
+
+            const { blob, fileName } = buildCsvBlobAndFileName();
+
+            // 可能なら共有機能でCSVファイルを渡す
+            try {
+                const file = new File([blob], fileName, { type: 'text/csv' });
+                const shareData = {
+                    title: "点検データ送信",
+                    text: `宛先: ${MAIL_TO}`,
+                    files: [file]
+                };
+
+                if(navigator.share && navigator.canShare && navigator.canShare({ files: [file] })) {
+                    await navigator.share(shareData);
+                    return;
+                }
+            } catch (e) {
+                console.error(e);
+            }
+
+            // 非対応環境は従来どおりCSV保存し、その後メール作成画面を開く
+            saveBlobAsFile(blob, fileName);
+
+            const subject = encodeURIComponent(`点検データ_${shopId}`);
+            const body = encodeURIComponent(`点検データを送付します。\n\n※CSVファイル「${fileName}」を添付して送信してください。`);
+            window.location.href = `mailto:${MAIL_TO}?subject=${subject}&body=${body}`;
         }
     </script>
 </body>
