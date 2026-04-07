@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v10.6</title>
+    <title>点検スキャナー v10.7</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; }
@@ -11,7 +11,7 @@
         .card { background: var(--card-bg); padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 12px; position: relative; }
         .version-tag { position: absolute; top: 8px; right: 12px; font-size: 10px; color: #999; }
         #reader-wrapper { width: 100%; border-radius: 10px; overflow: hidden; background: #000; border: 3px solid #3b82f6; position: relative; }
-        #reader { width: 100%; min-height: 280px; } 
+        #reader { width: 100%; min-height: 280px; }
         .status-badge { padding: 6px 15px; border-radius: 20px; background: #007bff; color: white; font-weight: bold; }
         input, select { width: 100%; height: 50px; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 18px; margin-top: 5px; box-sizing: border-box; }
         button { width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; margin-top: 10px; }
@@ -40,7 +40,7 @@
     </div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">v10.6</div>
+        <div class="version-tag">v10.7</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -51,7 +51,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">v10.6</div>
+            <div class="version-tag">v10.7</div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
                 <button onclick="initScanner()" style="width:auto; margin-top:0; padding:5px 10px; background:#ff9800; color:white; font-size:12px; border-radius:6px;">🔄 再起動</button>
@@ -66,7 +66,7 @@
             </div>
             <div id="rom-input-area" style="display:none; margin-top:10px;">
                 <div style="display:flex; gap:5px;">
-                    <input type="number" inputmode="numeric" id="rom-1" style="flex:1;" placeholder="数字" onclick="this.select();">
+                    <input type="number" inputmode="numeric" id="rom-1" style="flex:1;" placeholder="数字" onclick="this.select();" onblur="handleRom1Blur()">
                     <select id="rom-select" style="flex:1;" onchange="handleRomTypeChange()">
                         <option value="KY">KY</option>
                         <option value="EAI">EAI</option>
@@ -187,6 +187,27 @@
             } else if (romSelect.value === "KY") {
                 focusRom3Input();
             }
+        }
+
+        function handleRom1Blur() {
+            if (currentStep !== 3) return;
+
+            const rom1 = document.getElementById('rom-1');
+            const romSelect = document.getElementById('rom-select');
+            const rom3 = document.getElementById('rom-3');
+
+            if (!rom1 || !romSelect || !rom3) return;
+
+            const r1 = rom1.value.trim();
+            const r3 = rom3.value.trim();
+
+            if (!r1) return;
+            if (romSelect.value !== "KY") return;
+            if (r3) return;
+
+            setTimeout(() => {
+                focusRom3Input();
+            }, 50);
         }
 
         function showConfirmation(value) {
