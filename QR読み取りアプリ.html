@@ -3,62 +3,455 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v10.8</title>
+    <title>点検スキャナー v10.7</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
-
     <style>
-        :root { --bg-color:#f0f2f5; --card-bg:#fff; }
-        body { font-family:sans-serif; margin:0; padding:10px; background:var(--bg-color); }
-        .card { background:var(--card-bg); padding:15px; border-radius:12px; margin-bottom:12px; position:relative; }
-        .version-tag { position:absolute; top:8px; right:12px; font-size:10px; color:#999; }
-
-        input,select { width:100%; height:50px; font-size:18px; margin-top:5px; }
-        button { width:100%; padding:15px; margin-top:10px; }
-
-        .btn-primary { background:#3b82f6; color:#fff; }
-        .btn-success { background:#22c55e; color:#fff; }
-        .btn-secondary { background:#4b5563; color:#fff; }
-
-        #confirm-overlay {
-            display:none;
-            position:fixed;
-            top:0; left:0;
-            width:100%; height:100%;
-            background:rgba(0,0,0,0.9);
-            z-index:9999;
-            justify-content:center;
-            align-items:center;
-        }
+        :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; }
+        body { font-family: sans-serif; margin: 0; padding: 10px; background: var(--bg-color); }
+        .card { background: var(--card-bg); padding: 15px; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 12px; position: relative; }
+        .version-tag { position: absolute; top: 8px; right: 12px; font-size: 10px; color: #999; }
+        #reader-wrapper { width: 100%; border-radius: 10px; overflow: hidden; background: #000; border: 3px solid #3b82f6; position: relative; }
+        #reader { width: 100%; min-height: 280px; }
+        .status-badge { padding: 6px 15px; border-radius: 20px; background: #007bff; color: white; font-weight: bold; }
+        input, select { width: 100%; height: 50px; padding: 10px; border: 2px solid #ddd; border-radius: 8px; font-size: 18px; margin-top: 5px; box-sizing: border-box; }
+        button { width: 100%; padding: 15px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; margin-top: 10px; }
+        .btn-primary { background: #3b82f6; color: white; }
+        .btn-success { background: #22c55e; color: white; }
+        .btn-secondary { background: #4b5563; color: white; }
+        .btn-csv { background: #10b981; color: white; margin: 25px 0; }
+        .shop-name-display { color: #007bff; font-weight: bold; margin-top: 10px; background: #e7f1ff; padding: 12px; border-radius: 8px; text-align: center; }
+        .shop-list-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 6px; margin-top: 10px; }
+        .shop-item { background: #fff; padding: 6px; border-radius: 6px; border: 1px solid #eee; font-size: 12px; color: #555; }
+        #confirm-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 9999; justify-content: center; align-items: center; }
+        #confirm-modal { background: #fff; width: 90%; padding: 25px; border-radius: 20px; text-align: center; }
+        .seal-tag { display: inline-block; background: #e2e8f0; padding: 4px 10px; border-radius: 4px; margin: 4px; font-size: 14px; font-weight: bold; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.8em; margin-top: 10px; }
+        th, td { border-bottom: 1px solid #ddd; padding: 8px; text-align: left; }
     </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>点検スキャナー v10.8</title>
+
+<script src="https://unpkg.com/html5-qrcode"></script>
+
+<style>
+:root { --bg-color:#f0f2f5; --card-bg:#fff; }
+body { font-family:sans-serif; margin:0; padding:10px; background:var(--bg-color); }
+.card { background:var(--card-bg); padding:15px; border-radius:12px; margin-bottom:12px; position:relative; }
+.version-tag { position:absolute; top:8px; right:12px; font-size:10px; color:#999; }
+
+input,select { width:100%; height:50px; font-size:18px; margin-top:5px; }
+button { width:100%; padding:15px; margin-top:10px; }
+.btn-primary { background:#3b82f6; color:#fff; }
+.btn-success { background:#22c55e; color:#fff; }
+.btn-secondary { background:#4b5563; color:#fff; }
+</style>
 </head>
 
 <body>
 
-<div id="confirm-overlay">
-    <div style="background:#fff; padding:20px;">
-        <div id="scanned-display"></div>
-        <button onclick="approveValue()">OK</button>
-        <button onclick="rejectValue()">戻る</button>
+    <div id="confirm-overlay">
+        <div id="confirm-modal">
+            <div id="scanned-display" style="font-size:32px; font-weight:bold; color:#ff4500; margin-bottom:20px;">----</div>
+            <button class="btn-success" onclick="approveValue()">OK</button>
+            <button class="btn-secondary" onclick="rejectValue()" style="margin-top:10px;">戻る</button>
+        </div>
     </div>
-</div>
 
+    <div id="setup-screen" class="card">
+        <div class="version-tag">v10.7</div>
+        <h3>初期設定</h3>
+        <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
+        <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
+        <div id="shop-name" class="shop-name-display">店舗を選択してください</div>
+        <button class="btn-primary" onclick="startApp()">点検開始</button>
+        <div class="shop-list-grid" id="display-shop-list"></div>
+    </div>
+
+    <div id="main-app" style="display:none;">
+        <div class="card">
+            <div class="version-tag">v10.7</div>
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
+                <div id="status" class="status-badge">① 台番号スキャン</div>
+                <button onclick="initScanner()" style="width:auto; margin-top:0; padding:5px 10px; background:#ff9800; color:white; font-size:12px; border-radius:6px;">🔄 再起動</button>
+            </div>
+            <div id="reader-container">
+                <div id="reader-wrapper"><div id="reader"></div></div>
+                <button id="btn-skip" class="btn-secondary" style="display:none;" onclick="skipStep()">主基板/封印なし</button>
+            </div>
+            <div id="normal-input-area" style="margin-top:10px;">
+                <input type="number" inputmode="numeric" id="manual-input" placeholder="台番手入力">
+                <button class="btn-primary" onclick="handleManualInput()">確定</button>
+            </div>
+            <div id="rom-input-area" style="display:none; margin-top:10px;">
+                <div style="display:flex; gap:5px;">
+                    <input type="number" inputmode="numeric" id="rom-1" style="flex:1;" placeholder="数字" onclick="this.select();" onblur="handleRom1Blur()">
+                    <select id="rom-select" style="flex:1;" onchange="handleRomTypeChange()">
+                        <option value="KY">KY</option>
+                        <option value="EAI">EAI</option>
+                    </select>
+                    <input type="number" inputmode="numeric" id="rom-3" style="flex:1;" placeholder="数字(空欄可)" onclick="this.select();">
+                </div>
+                <button class="btn-primary" onclick="handleManualInput()">ROM確定</button>
+            </div>
+            <div id="seal-list-display" style="margin-top:10px;"></div>
+            <button id="btn-finish" class="btn-success" style="display:none;" onclick="finishMachine()">登録して次の台へ</button>
+            <button id="btn-back" class="btn-secondary" style="display:none;" onclick="goBack()">前へ戻る</button>
+        </div>
+        <div class="card" style="overflow-x:auto;"><table id="history-table"><thead><tr><th>台番</th><th>主</th><th>ROM</th><th>封印</th></tr></thead><tbody id="history-tbody"></tbody></table></div>
+        <button class="btn-csv" onclick="downloadCSV()">現在のデータをCSV保存</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
+    <script>
+        const shopList = { "01": "成田", "09": "潮来", "16": "木更津", "18": "神栖", "20": "多古", "22": "葉山", "23": "鹿嶋2", "28": "八日市場", "34": "奥野谷", "43": "大和", "44": "淵野辺", "13": "小見川", "25": "鹿嶋1", "26": "旭", "27": "八街", "29": "東金", "30": "富里", "31": "文違", "32": "今宮", "33": "市原", "35": "松戸", "36": "石岡", "37": "稲毛", "38": "佐原", "39": "川越", "40": "町田", "41": "セン南", "45": "ウイング" };
+        const MAIL_TO = "rom_receive@bishop777.com";
+
+        let staffId, shopId, currentStep = 1, currentData = { seals: [] }, allData = [], html5QrCode, pendingValue = "";
+        let prevRom1 = "", prevRom3 = "";
+
+        window.onload = () => {
+            const listGrid = document.getElementById('display-shop-list');
+            Object.keys(shopList).sort().forEach(id => {
+                const item = document.createElement('div');
+                item.className = 'shop-item';
+                item.innerText = `${id}: ${shopList[id]}`;
+                listGrid.appendChild(item);
+            });
+            handleRomTypeChange();
+        };
+
+        function updateShopName() {
+            let id = document.getElementById('shop-id').value;
+            if (id.length === 1 && id !== "") id = "0" + id;
+            document.getElementById('shop-name').innerText = shopList[id] || (id === "" ? "店舗を選択してください" : "カスタム(" + id + ")");
+        }
+
+        function startApp() {
+            staffId = document.getElementById('staff-id').value;
+            let idInput = document.getElementById('shop-id').value;
+            shopId = (idInput.length === 1) ? "0" + idInput : idInput;
+            if (!staffId || !shopId) return alert("社員番号と店舗番号を入力してください");
+            document.getElementById('setup-screen').style.display = 'none';
+            document.getElementById('main-app').style.display = 'block';
+            updateUI();
+            initScanner();
+        }
+
+        async function initScanner() {
+            if (html5QrCode) {
+                try { await html5QrCode.stop(); } catch (e) {}
+            }
+            html5QrCode = new Html5Qrcode("reader", { useBarCodeDetectorIfSupported: true });
+            const config = {
+                fps: 30,
+                videoConstraints: { facingMode: "environment" },
+                qrbox: (w, h) => { return { width: w * 0.75, height: h * 0.75 }; }
+            };
+            html5QrCode.start(
+                { facingMode: "environment" },
+                config,
+                (text) => {
+                    html5QrCode.pause();
+                    showConfirmation(text);
+                }
+            ).catch(e => console.error(e));
+        }
+
+        function isValidMachineId(value) {
+            if (!/^\d+$/.test(value)) return false;
+            const num = Number(value);
+            return Number.isInteger(num) && num >= 0 && num <= 999999;
+        }
+
+        function isValidSealQr(value) {
+            return typeof value === "string" && /^B/i.test(value);
+        }
+
+        function focusRomInput() {
+            const rom1 = document.getElementById('rom-1');
+            if (!rom1) return;
+
+            try {
+                rom1.focus({ preventScroll: true });
+            } catch (e) {
+                rom1.focus();
+            }
+
+            rom1.click();
+            rom1.select();
+        }
+
+        function focusRom3Input() {
+            const rom3 = document.getElementById('rom-3');
+            if (!rom3) return;
+
+            try {
+                rom3.focus({ preventScroll: true });
+            } catch (e) {
+                rom3.focus();
+            }
+
+            rom3.click();
+            rom3.select();
+        }
+
+        function handleRomTypeChange() {
+            const romSelect = document.getElementById('rom-select');
+            const rom3 = document.getElementById('rom-3');
+            if (!romSelect || !rom3) return;
+
+            if (romSelect.value === "EAI") {
+                rom3.value = "";
+            } else if (romSelect.value === "KY") {
+                focusRom3Input();
+            }
+        }
+
+        function handleRom1Blur() {
+            if (currentStep !== 3) return;
+
+            const rom1 = document.getElementById('rom-1');
+            const romSelect = document.getElementById('rom-select');
+            const rom3 = document.getElementById('rom-3');
+
+            if (!rom1 || !romSelect || !rom3) return;
+
+            const r1 = rom1.value.trim();
+            const r3 = rom3.value.trim();
+
+            if (!r1) return;
+            if (romSelect.value !== "KY") return;
+            if (r3) return;
+
+            setTimeout(() => {
+                focusRom3Input();
+            }, 50);
+        }
+
+        function showConfirmation(value) {
+            if (currentStep === 1) {
+                if (!isValidMachineId(value)) {
+                    alert("台番QRは数字の0～999999の範囲のみ読み取り可能です");
+                    html5QrCode.resume();
+                    return;
+                }
+            }
+
+            if (currentStep === 4) {
+                if (!isValidSealQr(value)) {
+                    alert("封印QRはBから始まるコードのみ有効です");
+                    html5QrCode.resume();
+                    return;
+                }
+
+                if (currentData.seals.includes(value)) {
+                    alert("警告：重複スキャンです！");
+                    html5QrCode.resume();
+                    return;
+                }
+            }
+
+            pendingValue = value;
+            document.getElementById('scanned-display').innerText = value;
+            document.getElementById('confirm-overlay').style.display = 'flex';
+        }
+
+        function approveValue() {
+            document.getElementById('confirm-overlay').style.display = 'none';
+
+            if (currentStep === 1) {
+                currentData.machineId = pendingValue;
+                currentStep = 2;
+                updateUI();
+                html5QrCode.resume();
+                return;
+            }
+
+            if (currentStep === 2) {
+                currentData.mainBoardId = pendingValue;
+                currentStep = 3;
+                updateUI();
+                focusRomInput();
+                html5QrCode.resume();
+                return;
+            }
+
+            if (currentStep === 3) {
+                currentData.romId = pendingValue;
+                currentStep = 4;
+                updateUI();
+                html5QrCode.resume();
+                return;
+            }
+
+            if (currentStep === 4) {
+                currentData.seals.push(pendingValue);
+                updateSealDisplay();
+                updateUI();
+                html5QrCode.resume();
+                return;
+            }
+        }
+
+        function rejectValue() {
+            document.getElementById('confirm-overlay').style.display = 'none';
+            html5QrCode.resume();
+        }
+
+        function updateUI() {
+            document.getElementById('btn-skip').style.display = (currentStep === 2 || currentStep === 4) ? 'block' : 'none';
+            document.getElementById('btn-finish').style.display = (currentStep === 4) ? 'block' : 'none';
+            document.getElementById('btn-back').style.display = (currentStep > 1) ? 'block' : 'none';
+            document.getElementById('rom-input-area').style.display = (currentStep === 3) ? 'block' : 'none';
+            document.getElementById('reader-container').style.display = (currentStep !== 3) ? 'block' : 'none';
+
+            const showNormalInput = (currentStep === 1 || currentStep === 2);
+            document.getElementById('normal-input-area').style.display = showNormalInput ? 'block' : 'none';
+
+            const titles = ["", "① 台番号スキャン", "② 主基板スキャン", "③ ROM入力", "④ 封印スキャン"];
+            document.getElementById('status').innerText = titles[currentStep];
+        }
+
+        function updateSealDisplay() {
+            document.getElementById('seal-list-display').innerHTML = currentData.seals.map(s => `<span class="seal-tag">${s}</span>`).join('');
+        }
+
+        function handleManualInput() {
+            if (currentStep === 3) {
+                const r1 = document.getElementById('rom-1').value.trim();
+                const r2 = document.getElementById('rom-select').value;
+                let r3 = document.getElementById('rom-3').value.trim();
+
+                if (!r1) {
+                    alert("メーカー番号を入力してください");
+                    focusRomInput();
+                    return;
+                }
+
+                if (r2 === "KY" && !r3) {
+                    focusRom3Input();
+                    return;
+                }
+
+                if (r2 === "EAI") {
+                    r3 = "";
+                    document.getElementById('rom-3').value = "";
+                }
+
+                prevRom1 = r1;
+                prevRom3 = r3;
+                currentData.romId = r1 + r2 + r3;
+                currentStep = 4;
+                updateUI();
+                return;
+            }
+
+            const val = document.getElementById('manual-input').value;
+            if (!val) return;
+
+            if (currentStep === 1 && !isValidMachineId(val)) {
+                alert("台番は数字の0～999999の範囲で入力してください");
+                return;
+            }
+
+            showConfirmation(val);
+            document.getElementById('manual-input').value = "";
+        }
+
+        function skipStep() {
+            if (currentStep === 2) {
+                currentData.mainBoardId = "なし";
+                currentStep = 3;
+                updateUI();
+                focusRomInput();
+                return;
+            } else if (currentStep === 4) {
+                if (currentData.seals.length === 0) currentData.seals.push("なし");
+                finishMachine();
+                return;
+            }
+            updateUI();
+        }
+
+        function finishMachine() {
+            const sealsText = currentData.seals.join(' / ');
+            allData.push({ ...currentData, sealsText: sealsText, time: new Date().toLocaleTimeString() });
+            const row = `<tr><td>${currentData.machineId}</td><td>${currentData.mainBoardId}</td><td>${currentData.romId}</td><td>${sealsText}</td></tr>`;
+            document.getElementById('history-tbody').insertAdjacentHTML('afterbegin', row);
+
+            currentStep = 1;
+            currentData = { seals: [] };
+            document.getElementById('seal-list-display').innerHTML = "";
+            document.getElementById('rom-1').value = prevRom1;
+            document.getElementById('rom-3').value = prevRom3;
+            handleRomTypeChange();
+            updateUI();
+        }
+
+        function goBack() {
+            if (currentStep === 4 && currentData.seals.length > 0) {
+                currentData.seals.pop();
+                updateSealDisplay();
+            } else if (currentStep > 1) {
+                currentStep--;
+            }
+            updateUI();
+        }
+
+        function buildCsvBlobAndFileName() {
+            let csvContent = "社員,店舗,時間,台番,主,ROM,封印\r\n";
+            allData.forEach(d => {
+                csvContent += `${staffId},${shopId},${d.time},${d.machineId},${d.mainBoardId},${d.romId},"${d.sealsText}"\r\n`;
+            });
+
+            const unicodeArray = Encoding.stringToCode(csvContent);
+            const sjisArray = Encoding.convert(unicodeArray, 'SJIS', 'UNICODE');
+            const uint8Array = new Uint8Array(sjisArray);
+            const blob = new Blob([uint8Array], { type: 'text/csv;charset=shift-jis' });
+            const fileName = `点検_${shopId}_${new Date().toLocaleDateString().replace(/\//g, '-')}.csv`;
+
+            return { blob, fileName };
+        }
+
+        function saveBlobAsFile(blob, fileName) {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        async function downloadCSV() {
+            if (allData.length === 0) return alert("データなし");
+
+            const { blob, fileName } = buildCsvBlobAndFileName();
+
+            saveBlobAsFile(blob, fileName);
+
+            const subject = encodeURIComponent(`点検データ_${shopId}`);
+            const body = encodeURIComponent(
+                `点検データを送付します。\n\n` +
+                `保存ファイル名: ${fileName}\n` +
+                `※保存されたCSVファイルを添付して送信してください。`
+            );
+
+            setTimeout(() => {
+                window.location.href = `mailto:${MAIL_TO}?subject=${subject}&body=${body}`;
+            }, 500);
+        }
+    </script>
 <div id="main-app">
-
 <div class="card">
 <div class="version-tag">v10.8</div>
 
-<div id="status">① 台番号スキャン</div>
+<div id="status">③ ROM入力</div>
 
-<div id="reader"></div>
+<div id="rom-input-area">
 
-<!-- 手入力 -->
-<div id="normal-input-area">
-    <input type="number" inputmode="numeric" id="manual-input">
-    <button onclick="handleManualInput()">確定</button>
-</div>
-
-<!-- ROM -->
-<div id="rom-input-area" style="display:none;">
 <div style="display:flex; gap:5px;">
 
 <input type="number" inputmode="numeric"
@@ -80,47 +473,27 @@
 
 </div>
 
-<button onclick="handleManualInput()">ROM確定</button>
+<button class="btn-primary" onclick="handleManualInput()">ROM確定</button>
+
 </div>
-
-<button id="btn-finish" onclick="finishMachine()" style="display:none;">完了</button>
-
 </div>
 </div>
 
 <script>
 
-/* =========================
-   状態
-========================= */
-let currentStep = 1;
-let currentData = { seals: [] };
-let html5QrCode;
-let pendingValue = "";
+let currentStep = 3;
 
 /* =========================
-   スキャナー
+   フォーカス制御（重要）
 ========================= */
-async function initScanner(){
-    html5QrCode = new Html5Qrcode("reader");
-    html5QrCode.start(
-        { facingMode:"environment" },
-        { fps:30 },
-        (text)=>{
-            html5QrCode.pause();
-            showConfirmation(text);
-        }
-    );
-}
 
-/* =========================
-   ★テンキー強制（今回の核心）
-========================= */
 function focusRom3WithKeyboard(){
 
     const rom3 = document.getElementById('rom-3');
-    if (!rom3) return;
 
+    if(!rom3) return;
+
+    // ★テンキー強制トリック
     rom3.setAttribute("readonly", true);
 
     rom3.focus();
@@ -133,9 +506,11 @@ function focusRom3WithKeyboard(){
     },50);
 }
 
+
 /* =========================
-   rom-1 → rom-3
+   rom-1 → rom-3 移動
 ========================= */
+
 function handleRom1Blur(){
 
     if(currentStep !== 3) return;
@@ -153,9 +528,11 @@ function handleRom1Blur(){
     },100);
 }
 
+
 /* =========================
    種別変更
 ========================= */
+
 function handleRomTypeChange(){
 
     const type = document.getElementById('rom-select').value;
@@ -165,134 +542,33 @@ function handleRomTypeChange(){
     }
 }
 
-/* =========================
-   UI
-========================= */
-function updateUI(){
-
-    document.getElementById('rom-input-area').style.display = (currentStep === 3) ? 'block':'none';
-    document.getElementById('normal-input-area').style.display = (currentStep <= 2) ? 'block':'none';
-    document.getElementById('btn-finish').style.display = (currentStep === 4) ? 'block':'none';
-
-    const titles = ["","① 台番号","② 主基板","③ ROM","④ 封印"];
-    document.getElementById('status').innerText = titles[currentStep];
-}
 
 /* =========================
-   QRチェック
+   確定処理
 ========================= */
-function isValidMachineId(v){ return /^\d+$/.test(v); }
-function isValidSealQr(v){ return /^B/i.test(v); }
 
-/* =========================
-   確認
-========================= */
-function showConfirmation(val){
-
-    if(currentStep === 1 && !isValidMachineId(val)){
-        alert("台番エラー");
-        html5QrCode.resume();
-        return;
-    }
-
-    if(currentStep === 4 && !isValidSealQr(val)){
-        alert("封印はBのみ");
-        html5QrCode.resume();
-        return;
-    }
-
-    pendingValue = val;
-    document.getElementById('confirm-overlay').style.display = 'flex';
-}
-
-/* =========================
-   OK
-========================= */
-function approveValue(){
-
-    document.getElementById('confirm-overlay').style.display = 'none';
-
-    if(currentStep === 1){
-        currentData.machineId = pendingValue;
-        currentStep = 2;
-    }
-    else if(currentStep === 2){
-        currentData.mainBoardId = pendingValue;
-        currentStep = 3;
-        setTimeout(()=>{ document.getElementById('rom-1').focus(); },100);
-    }
-    else if(currentStep === 3){
-        currentData.romId = pendingValue;
-        currentStep = 4;
-    }
-    else if(currentStep === 4){
-        currentData.seals.push(pendingValue);
-    }
-
-    updateUI();
-    html5QrCode.resume();
-}
-
-/* =========================
-   NG
-========================= */
-function rejectValue(){
-    document.getElementById('confirm-overlay').style.display = 'none';
-    html5QrCode.resume();
-}
-
-/* =========================
-   手入力
-========================= */
 function handleManualInput(){
 
-    if(currentStep === 3){
+    const r1 = document.getElementById('rom-1').value.trim();
+    const r2 = document.getElementById('rom-select').value;
+    let r3 = document.getElementById('rom-3').value.trim();
 
-        const r1 = document.getElementById('rom-1').value.trim();
-        const r2 = document.getElementById('rom-select').value;
-        let r3 = document.getElementById('rom-3').value.trim();
-
-        if(!r1){
-            alert("入力必須");
-            return;
-        }
-
-        if(r2 === "KY" && !r3){
-            focusRom3WithKeyboard();
-            return;
-        }
-
-        if(r2 === "EAI"){
-            r3 = "";
-        }
-
-        currentData.romId = r1 + r2 + r3;
-        currentStep = 4;
-        updateUI();
+    if(!r1){
+        alert("メーカー番号を入力してください");
         return;
     }
 
-    const val = document.getElementById('manual-input').value;
-    if(!val) return;
+    if(r2 === "KY" && !r3){
+        focusRom3WithKeyboard();
+        return;
+    }
 
-    showConfirmation(val);
+    if(r2 === "EAI"){
+        r3 = "";
+    }
+
+    alert("登録: " + r1 + r2 + r3);
 }
-
-/* =========================
-   完了
-========================= */
-function finishMachine(){
-    console.log(currentData);
-    currentStep = 1;
-    currentData = { seals: [] };
-    updateUI();
-}
-
-/* =========================
-   初期
-========================= */
-initScanner();
-updateUI();
 
 </script>
 
