@@ -1,46 +1,45 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>点検スキャナー v10.8</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>点検スキャナー v10.8</title>
+    <script src="https://unpkg.com/html5-qrcode"></script>
 
-<script src="https://unpkg.com/html5-qrcode"></script>
+    <style>
+        :root { --bg-color:#f0f2f5; --card-bg:#fff; }
+        body { font-family:sans-serif; margin:0; padding:10px; background:var(--bg-color); }
+        .card { background:var(--card-bg); padding:15px; border-radius:12px; margin-bottom:12px; position:relative; }
+        .version-tag { position:absolute; top:8px; right:12px; font-size:10px; color:#999; }
 
-<style>
-:root { --bg-color:#f0f2f5; --card-bg:#fff; }
-body { font-family:sans-serif; margin:0; padding:10px; background:var(--bg-color); }
-.card { background:var(--card-bg); padding:15px; border-radius:12px; margin-bottom:12px; position:relative; }
-.version-tag { position:absolute; top:8px; right:12px; font-size:10px; color:#999; }
+        input,select { width:100%; height:50px; font-size:18px; margin-top:5px; }
+        button { width:100%; padding:15px; margin-top:10px; }
 
-input,select { width:100%; height:50px; font-size:18px; margin-top:5px; }
-button { width:100%; padding:15px; margin-top:10px; }
+        .btn-primary { background:#3b82f6; color:#fff; }
+        .btn-success { background:#22c55e; color:#fff; }
+        .btn-secondary { background:#4b5563; color:#fff; }
 
-.btn-primary { background:#3b82f6; color:#fff; }
-.btn-success { background:#22c55e; color:#fff; }
-.btn-secondary { background:#4b5563; color:#fff; }
-
-#confirm-overlay {
-display:none;
-position:fixed;
-top:0; left:0;
-width:100%; height:100%;
-background:rgba(0,0,0,0.9);
-z-index:9999;
-justify-content:center;
-align-items:center;
-}
-</style>
+        #confirm-overlay {
+            display:none;
+            position:fixed;
+            top:0; left:0;
+            width:100%; height:100%;
+            background:rgba(0,0,0,0.9);
+            z-index:9999;
+            justify-content:center;
+            align-items:center;
+        }
+    </style>
 </head>
 
 <body>
 
 <div id="confirm-overlay">
-<div style="background:#fff; padding:20px;">
-<div id="scanned-display"></div>
-<button onclick="approveValue()">OK</button>
-<button onclick="rejectValue()">戻る</button>
-</div>
+    <div style="background:#fff; padding:20px;">
+        <div id="scanned-display"></div>
+        <button onclick="approveValue()">OK</button>
+        <button onclick="rejectValue()">戻る</button>
+    </div>
 </div>
 
 <div id="main-app">
@@ -52,10 +51,10 @@ align-items:center;
 
 <div id="reader"></div>
 
-<!-- 手入力（①②のみ表示） -->
+<!-- 手入力 -->
 <div id="normal-input-area">
-<input type="number" inputmode="numeric" id="manual-input">
-<button onclick="handleManualInput()">確定</button>
+    <input type="number" inputmode="numeric" id="manual-input">
+    <button onclick="handleManualInput()">確定</button>
 </div>
 
 <!-- ROM -->
@@ -87,7 +86,6 @@ align-items:center;
 <button id="btn-finish" onclick="finishMachine()" style="display:none;">完了</button>
 
 </div>
-
 </div>
 
 <script>
@@ -104,38 +102,35 @@ let pendingValue = "";
    スキャナー
 ========================= */
 async function initScanner(){
-
-html5QrCode = new Html5Qrcode("reader");
-
-html5QrCode.start(
-{ facingMode:"environment" },
-{ fps:30 },
-(text)=>{
-html5QrCode.pause();
-showConfirmation(text);
-}
-);
-
+    html5QrCode = new Html5Qrcode("reader");
+    html5QrCode.start(
+        { facingMode:"environment" },
+        { fps:30 },
+        (text)=>{
+            html5QrCode.pause();
+            showConfirmation(text);
+        }
+    );
 }
 
 /* =========================
-   テンキー強制
+   ★テンキー強制（今回の核心）
 ========================= */
 function focusRom3WithKeyboard(){
 
-const rom3 = document.getElementById('rom-3');
+    const rom3 = document.getElementById('rom-3');
+    if (!rom3) return;
 
-rom3.setAttribute("readonly", true);
+    rom3.setAttribute("readonly", true);
 
-rom3.focus();
-rom3.click();
+    rom3.focus();
+    rom3.click();
 
-setTimeout(()=>{
-rom3.removeAttribute("readonly");
-rom3.focus();
-rom3.select();
-},50);
-
+    setTimeout(()=>{
+        rom3.removeAttribute("readonly");
+        rom3.focus();
+        rom3.select();
+    },50);
 }
 
 /* =========================
@@ -143,20 +138,19 @@ rom3.select();
 ========================= */
 function handleRom1Blur(){
 
-if(currentStep !== 3) return;
+    if(currentStep !== 3) return;
 
-const r1 = document.getElementById('rom-1').value.trim();
-const r3 = document.getElementById('rom-3').value.trim();
-const type = document.getElementById('rom-select').value;
+    const r1 = document.getElementById('rom-1').value.trim();
+    const r3 = document.getElementById('rom-3').value.trim();
+    const type = document.getElementById('rom-select').value;
 
-if(!r1) return;
-if(type !== "KY") return;
-if(r3) return;
+    if(!r1) return;
+    if(type !== "KY") return;
+    if(r3) return;
 
-setTimeout(()=>{
-focusRom3WithKeyboard();
-},100);
-
+    setTimeout(()=>{
+        focusRom3WithKeyboard();
+    },100);
 }
 
 /* =========================
@@ -164,57 +158,51 @@ focusRom3WithKeyboard();
 ========================= */
 function handleRomTypeChange(){
 
-if(document.getElementById('rom-select').value === "KY"){
-focusRom3WithKeyboard();
-}
+    const type = document.getElementById('rom-select').value;
 
+    if(type === "KY"){
+        focusRom3WithKeyboard();
+    }
 }
 
 /* =========================
-   UI制御
+   UI
 ========================= */
 function updateUI(){
 
-document.getElementById('rom-input-area').style.display = (currentStep === 3) ? 'block':'none';
-document.getElementById('normal-input-area').style.display = (currentStep === 1 || currentStep === 2) ? 'block':'none';
-document.getElementById('btn-finish').style.display = (currentStep === 4) ? 'block':'none';
+    document.getElementById('rom-input-area').style.display = (currentStep === 3) ? 'block':'none';
+    document.getElementById('normal-input-area').style.display = (currentStep <= 2) ? 'block':'none';
+    document.getElementById('btn-finish').style.display = (currentStep === 4) ? 'block':'none';
 
-const titles = ["","① 台番号","② 主基板","③ ROM","④ 封印"];
-document.getElementById('status').innerText = titles[currentStep];
-
+    const titles = ["","① 台番号","② 主基板","③ ROM","④ 封印"];
+    document.getElementById('status').innerText = titles[currentStep];
 }
 
 /* =========================
-   QR判定
+   QRチェック
 ========================= */
-function isValidMachineId(v){
-return /^\d+$/.test(v);
-}
-
-function isValidSealQr(v){
-return /^B/i.test(v);
-}
+function isValidMachineId(v){ return /^\d+$/.test(v); }
+function isValidSealQr(v){ return /^B/i.test(v); }
 
 /* =========================
    確認
 ========================= */
 function showConfirmation(val){
 
-if(currentStep === 1 && !isValidMachineId(val)){
-alert("台番エラー");
-html5QrCode.resume();
-return;
-}
+    if(currentStep === 1 && !isValidMachineId(val)){
+        alert("台番エラー");
+        html5QrCode.resume();
+        return;
+    }
 
-if(currentStep === 4 && !isValidSealQr(val)){
-alert("封印はBのみ");
-html5QrCode.resume();
-return;
-}
+    if(currentStep === 4 && !isValidSealQr(val)){
+        alert("封印はBのみ");
+        html5QrCode.resume();
+        return;
+    }
 
-pendingValue = val;
-document.getElementById('confirm-overlay').style.display = 'flex';
-
+    pendingValue = val;
+    document.getElementById('confirm-overlay').style.display = 'flex';
 }
 
 /* =========================
@@ -222,36 +210,35 @@ document.getElementById('confirm-overlay').style.display = 'flex';
 ========================= */
 function approveValue(){
 
-document.getElementById('confirm-overlay').style.display = 'none';
+    document.getElementById('confirm-overlay').style.display = 'none';
 
-if(currentStep === 1){
-currentData.machineId = pendingValue;
-currentStep = 2;
-}
-else if(currentStep === 2){
-currentData.mainBoardId = pendingValue;
-currentStep = 3;
-setTimeout(()=>{document.getElementById('rom-1').focus();},100);
-}
-else if(currentStep === 3){
-currentData.romId = pendingValue;
-currentStep = 4;
-}
-else if(currentStep === 4){
-currentData.seals.push(pendingValue);
-}
+    if(currentStep === 1){
+        currentData.machineId = pendingValue;
+        currentStep = 2;
+    }
+    else if(currentStep === 2){
+        currentData.mainBoardId = pendingValue;
+        currentStep = 3;
+        setTimeout(()=>{ document.getElementById('rom-1').focus(); },100);
+    }
+    else if(currentStep === 3){
+        currentData.romId = pendingValue;
+        currentStep = 4;
+    }
+    else if(currentStep === 4){
+        currentData.seals.push(pendingValue);
+    }
 
-updateUI();
-html5QrCode.resume();
-
+    updateUI();
+    html5QrCode.resume();
 }
 
 /* =========================
    NG
 ========================= */
 function rejectValue(){
-document.getElementById('confirm-overlay').style.display = 'none';
-html5QrCode.resume();
+    document.getElementById('confirm-overlay').style.display = 'none';
+    html5QrCode.resume();
 }
 
 /* =========================
@@ -259,52 +246,46 @@ html5QrCode.resume();
 ========================= */
 function handleManualInput(){
 
-if(currentStep === 3){
+    if(currentStep === 3){
 
-const r1 = document.getElementById('rom-1').value.trim();
-const r2 = document.getElementById('rom-select').value;
-let r3 = document.getElementById('rom-3').value.trim();
+        const r1 = document.getElementById('rom-1').value.trim();
+        const r2 = document.getElementById('rom-select').value;
+        let r3 = document.getElementById('rom-3').value.trim();
 
-if(!r1){
-alert("入力必須");
-return;
-}
+        if(!r1){
+            alert("入力必須");
+            return;
+        }
 
-if(r2 === "KY" && !r3){
-focusRom3WithKeyboard();
-return;
-}
+        if(r2 === "KY" && !r3){
+            focusRom3WithKeyboard();
+            return;
+        }
 
-if(r2 === "EAI"){
-r3 = "";
-}
+        if(r2 === "EAI"){
+            r3 = "";
+        }
 
-currentData.romId = r1 + r2 + r3;
-currentStep = 4;
-updateUI();
-return;
+        currentData.romId = r1 + r2 + r3;
+        currentStep = 4;
+        updateUI();
+        return;
+    }
 
-}
+    const val = document.getElementById('manual-input').value;
+    if(!val) return;
 
-const val = document.getElementById('manual-input').value;
-if(!val) return;
-
-showConfirmation(val);
-
+    showConfirmation(val);
 }
 
 /* =========================
    完了
 ========================= */
 function finishMachine(){
-
-console.log(currentData);
-
-currentStep = 1;
-currentData = { seals: [] };
-
-updateUI();
-
+    console.log(currentData);
+    currentStep = 1;
+    currentData = { seals: [] };
+    updateUI();
 }
 
 /* =========================
