@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v10.5</title>
+    <title>点検スキャナー v10.6</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; }
@@ -40,7 +40,7 @@
     </div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">v10.5</div>
+        <div class="version-tag">v10.6</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -51,7 +51,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">v10.5</div>
+            <div class="version-tag">v10.6</div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
                 <button onclick="initScanner()" style="width:auto; margin-top:0; padding:5px 10px; background:#ff9800; color:white; font-size:12px; border-radius:6px;">🔄 再起動</button>
@@ -264,8 +264,11 @@
             document.getElementById('btn-finish').style.display = (currentStep === 4) ? 'block' : 'none';
             document.getElementById('btn-back').style.display = (currentStep > 1) ? 'block' : 'none';
             document.getElementById('rom-input-area').style.display = (currentStep === 3) ? 'block' : 'none';
-            document.getElementById('normal-input-area').style.display = (currentStep !== 3) ? 'block' : 'none';
             document.getElementById('reader-container').style.display = (currentStep !== 3) ? 'block' : 'none';
+
+            const showNormalInput = (currentStep === 1 || currentStep === 2);
+            document.getElementById('normal-input-area').style.display = showNormalInput ? 'block' : 'none';
+
             const titles = ["", "① 台番号スキャン", "② 主基板スキャン", "③ ROM入力", "④ 封印スキャン"];
             document.getElementById('status').innerText = titles[currentStep];
         }
@@ -276,36 +279,44 @@
 
         function handleManualInput() {
             if (currentStep === 3) {
-                const r1 = document.getElementById('rom-1').value;
+                const r1 = document.getElementById('rom-1').value.trim();
                 const r2 = document.getElementById('rom-select').value;
-                let r3 = document.getElementById('rom-3').value;
+                let r3 = document.getElementById('rom-3').value.trim();
+
+                if (!r1) {
+                    alert("メーカー番号を入力してください");
+                    focusRomInput();
+                    return;
+                }
+
+                if (r2 === "KY" && !r3) {
+                    focusRom3Input();
+                    return;
+                }
 
                 if (r2 === "EAI") {
                     r3 = "";
                     document.getElementById('rom-3').value = "";
                 }
 
-                if (r1) {
-                    prevRom1 = r1;
-                    prevRom3 = r3;
-                    currentData.romId = r1 + r2 + r3;
-                    currentStep = 4;
-                    updateUI();
-                } else {
-                    alert("メーカー番号を入力してください");
-                }
-            } else {
-                const val = document.getElementById('manual-input').value;
-                if (!val) return;
-
-                if (currentStep === 1 && !isValidMachineId(val)) {
-                    alert("台番は数字の0～999999の範囲で入力してください");
-                    return;
-                }
-
-                showConfirmation(val);
-                document.getElementById('manual-input').value = "";
+                prevRom1 = r1;
+                prevRom3 = r3;
+                currentData.romId = r1 + r2 + r3;
+                currentStep = 4;
+                updateUI();
+                return;
             }
+
+            const val = document.getElementById('manual-input').value;
+            if (!val) return;
+
+            if (currentStep === 1 && !isValidMachineId(val)) {
+                alert("台番は数字の0～999999の範囲で入力してください");
+                return;
+            }
+
+            showConfirmation(val);
+            document.getElementById('manual-input').value = "";
         }
 
         function skipStep() {
