@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v10.4</title>
+    <title>点検スキャナー v10.5</title>
     <script src="https://unpkg.com/html5-qrcode"></script>
     <style>
         :root { --bg-color: #f0f2f5; --card-bg: #ffffff; --text-color: #333333; }
@@ -40,7 +40,7 @@
     </div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">v10.4</div>
+        <div class="version-tag">v10.5</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -51,7 +51,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">v10.4</div>
+            <div class="version-tag">v10.5</div>
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
                 <button onclick="initScanner()" style="width:auto; margin-top:0; padding:5px 10px; background:#ff9800; color:white; font-size:12px; border-radius:6px;">🔄 再起動</button>
@@ -153,20 +153,28 @@
             const rom1 = document.getElementById('rom-1');
             if (!rom1) return;
 
-            setTimeout(() => {
+            try {
+                rom1.focus({ preventScroll: true });
+            } catch (e) {
                 rom1.focus();
-                rom1.select();
-            }, 50);
+            }
+
+            rom1.click();
+            rom1.select();
         }
 
         function focusRom3Input() {
             const rom3 = document.getElementById('rom-3');
             if (!rom3) return;
 
-            setTimeout(() => {
+            try {
+                rom3.focus({ preventScroll: true });
+            } catch (e) {
                 rom3.focus();
-                rom3.select();
-            }, 50);
+            }
+
+            rom3.click();
+            rom3.select();
         }
 
         function handleRomTypeChange() {
@@ -211,21 +219,39 @@
 
         function approveValue() {
             document.getElementById('confirm-overlay').style.display = 'none';
+
             if (currentStep === 1) {
                 currentData.machineId = pendingValue;
                 currentStep = 2;
-            } else if (currentStep === 2) {
+                updateUI();
+                html5QrCode.resume();
+                return;
+            }
+
+            if (currentStep === 2) {
                 currentData.mainBoardId = pendingValue;
                 currentStep = 3;
-            } else if (currentStep === 3) {
+                updateUI();
+                focusRomInput();
+                html5QrCode.resume();
+                return;
+            }
+
+            if (currentStep === 3) {
                 currentData.romId = pendingValue;
                 currentStep = 4;
-            } else if (currentStep === 4) {
+                updateUI();
+                html5QrCode.resume();
+                return;
+            }
+
+            if (currentStep === 4) {
                 currentData.seals.push(pendingValue);
                 updateSealDisplay();
+                updateUI();
+                html5QrCode.resume();
+                return;
             }
-            updateUI();
-            html5QrCode.resume();
         }
 
         function rejectValue() {
@@ -242,10 +268,6 @@
             document.getElementById('reader-container').style.display = (currentStep !== 3) ? 'block' : 'none';
             const titles = ["", "① 台番号スキャン", "② 主基板スキャン", "③ ROM入力", "④ 封印スキャン"];
             document.getElementById('status').innerText = titles[currentStep];
-
-            if (currentStep === 3) {
-                focusRomInput();
-            }
         }
 
         function updateSealDisplay() {
@@ -290,6 +312,9 @@
             if (currentStep === 2) {
                 currentData.mainBoardId = "なし";
                 currentStep = 3;
+                updateUI();
+                focusRomInput();
+                return;
             } else if (currentStep === 4) {
                 if (currentData.seals.length === 0) currentData.seals.push("なし");
                 finishMachine();
