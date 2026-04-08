@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v10.10</title>
+    <title>点検スキャナー v10.11</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -158,6 +158,21 @@
             padding: 8px;
             text-align: left;
         }
+
+        #scan-toast {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #22c55e;
+            color: #fff;
+            padding: 12px 20px;
+            border-radius: 10px;
+            font-weight: bold;
+            z-index: 10000;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+        }
     </style>
 </head>
 
@@ -171,8 +186,10 @@
         </div>
     </div>
 
+    <div id="scan-toast">封印を登録しました</div>
+
     <div id="setup-screen" class="card">
-        <div class="version-tag">v10.10</div>
+        <div class="version-tag">v10.11</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -183,7 +200,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">v10.10</div>
+            <div class="version-tag">v10.11</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -253,6 +270,7 @@
         let pendingValue = "";
         let prevRom1 = "";
         let prevRom3 = "";
+        let toastTimer = null;
 
         window.onload = () => {
             const listGrid = document.getElementById('display-shop-list');
@@ -270,6 +288,22 @@
             window.scrollTo({ top: 0, behavior: 'auto' });
             document.body.scrollTop = 0;
             document.documentElement.scrollTop = 0;
+        }
+
+        function showScanToast(message) {
+            const toast = document.getElementById('scan-toast');
+            if (!toast) return;
+
+            toast.innerText = message;
+            toast.style.display = 'block';
+
+            if (toastTimer) {
+                clearTimeout(toastTimer);
+            }
+
+            toastTimer = setTimeout(() => {
+                toast.style.display = 'none';
+            }, 1000);
         }
 
         function updateShopName() {
@@ -430,6 +464,7 @@
                 currentData.seals.push(value);
                 updateSealDisplay();
                 updateUI();
+                showScanToast("封印を登録しました");
                 html5QrCode.resume();
                 return;
             }
