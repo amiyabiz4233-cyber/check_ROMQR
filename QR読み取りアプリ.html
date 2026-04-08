@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v10.11</title>
+    <title>点検スキャナー v11</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -189,7 +189,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">v10.11</div>
+        <div class="version-tag">v11</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -200,7 +200,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">v10.11</div>
+            <div class="version-tag">v11</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -219,7 +219,7 @@
 
             <div id="rom-input-area" style="display:none; margin-top:10px;">
                 <div style="display:flex; gap:5px;">
-                    <input type="number" inputmode="numeric" id="rom-1" style="flex:1;" placeholder="数字" onclick="this.select();" onblur="handleRom1Blur()">
+                    <input type="number" inputmode="numeric" id="rom-1" style="flex:1;" placeholder="数字" onclick="this.select();" onblur="handleRom1Blur()" oninput="handleRom1Input()">
                     <select id="rom-select" style="flex:1;" onchange="handleRomTypeChange()">
                         <option value="KY">KY</option>
                         <option value="EAI">EAI</option>
@@ -409,6 +409,25 @@
             }
         }
 
+        function handleRom1Input() {
+            if (currentStep !== 3) return;
+
+            const rom1 = document.getElementById('rom-1');
+            const romSelect = document.getElementById('rom-select');
+            const rom3 = document.getElementById('rom-3');
+
+            if (!rom1 || !romSelect || !rom3) return;
+            if (romSelect.value !== "KY") return;
+
+            const r1 = rom1.value.trim();
+
+            if (r1.length === 4) {
+                setTimeout(() => {
+                    focusRom3WithKeyboard();
+                }, 50);
+            }
+        }
+
         function handleRom1Blur() {
             if (currentStep !== 3) return;
 
@@ -433,7 +452,6 @@
         function handleScannedText(value) {
             if (currentStep === 1) {
                 if (!isValidMachineId(value)) {
-                    alert("台番QRは数字の0～999999の範囲のみ読み取り可能です");
                     html5QrCode.resume();
                     return;
                 }
@@ -451,7 +469,6 @@
 
             if (currentStep === 4) {
                 if (!isValidSealQr(value)) {
-                    alert("封印QRはBから始まるコードのみ有効です");
                     html5QrCode.resume();
                     return;
                 }
@@ -568,7 +585,6 @@
             if (!val) return;
 
             if (currentStep === 1 && !isValidMachineId(val)) {
-                alert("台番は数字の0～999999の範囲で入力してください");
                 return;
             }
 
