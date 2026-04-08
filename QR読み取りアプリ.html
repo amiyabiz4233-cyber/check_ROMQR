@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v11</title>
+    <title>点検スキャナー v11.1</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -189,7 +189,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">v11</div>
+        <div class="version-tag">v11.1</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -200,7 +200,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">v11</div>
+            <div class="version-tag">v11.1</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -219,12 +219,28 @@
 
             <div id="rom-input-area" style="display:none; margin-top:10px;">
                 <div style="display:flex; gap:5px;">
-                    <input type="number" inputmode="numeric" id="rom-1" style="flex:1;" placeholder="数字" onclick="this.select();" onblur="handleRom1Blur()" oninput="handleRom1Input()">
+                    <input
+                        type="number"
+                        inputmode="numeric"
+                        id="rom-1"
+                        style="flex:1;"
+                        placeholder="数字"
+                        onclick="this.select();"
+                        onblur="handleRom1Blur()"
+                        oninput="handleRom1Input()"
+                    >
                     <select id="rom-select" style="flex:1;" onchange="handleRomTypeChange()">
                         <option value="KY">KY</option>
                         <option value="EAI">EAI</option>
                     </select>
-                    <input type="number" inputmode="numeric" id="rom-3" style="flex:1;" placeholder="数字(空欄可)" onclick="this.select();">
+                    <input
+                        type="number"
+                        inputmode="numeric"
+                        id="rom-3"
+                        style="flex:1;"
+                        placeholder="数字(空欄可)"
+                        onclick="this.select();"
+                    >
                 </div>
                 <button class="btn-primary" onclick="handleManualInput()">ROM確定</button>
             </div>
@@ -385,13 +401,23 @@
             const rom3 = document.getElementById('rom-3');
             if (!rom3) return;
 
-            rom3.setAttribute("readonly", true);
-            rom3.focus();
+            try {
+                rom3.focus({ preventScroll: true });
+            } catch (e) {
+                rom3.focus();
+            }
+
             rom3.click();
+            rom3.select();
 
             setTimeout(() => {
-                rom3.removeAttribute("readonly");
-                rom3.focus();
+                try {
+                    rom3.focus({ preventScroll: true });
+                } catch (e) {
+                    rom3.focus();
+                }
+
+                rom3.click();
                 rom3.select();
             }, 50);
         }
@@ -424,7 +450,7 @@
             if (r1.length === 4) {
                 setTimeout(() => {
                     focusRom3WithKeyboard();
-                }, 50);
+                }, 120);
             }
         }
 
