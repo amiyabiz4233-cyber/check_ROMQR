@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v11.1</title>
+    <title>点検スキャナー v11.2</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -189,7 +189,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">v11.1</div>
+        <div class="version-tag">v11.2</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -200,7 +200,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">v11.1</div>
+            <div class="version-tag">v11.2</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -287,6 +287,7 @@
         let prevRom1 = "";
         let prevRom3 = "";
         let toastTimer = null;
+        let audioContext = null;
 
         window.onload = () => {
             const listGrid = document.getElementById('display-shop-list');
@@ -322,6 +323,47 @@
             }, 1000);
         }
 
+        function initAudio() {
+            try {
+                if (!audioContext) {
+                    audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            } catch (e) {
+                console.error("AudioContext 初期化失敗", e);
+            }
+        }
+
+        function playScanBeep() {
+            try {
+                if (!audioContext) {
+                    initAudio();
+                }
+
+                if (!audioContext) return;
+
+                if (audioContext.state === "suspended") {
+                    audioContext.resume();
+                }
+
+                const oscillator = audioContext.createOscillator();
+                const gainNode = audioContext.createGain();
+
+                oscillator.type = "sine";
+                oscillator.frequency.setValueAtTime(1000, audioContext.currentTime);
+
+                gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.08);
+
+                oscillator.connect(gainNode);
+                gainNode.connect(audioContext.destination);
+
+                oscillator.start();
+                oscillator.stop(audioContext.currentTime + 0.08);
+            } catch (e) {
+                console.error("ビープ音再生失敗", e);
+            }
+        }
+
         function updateShopName() {
             let id = document.getElementById('shop-id').value;
             if (id.length === 1 && id !== "") id = "0" + id;
@@ -339,6 +381,8 @@
                 alert("社員番号と店舗番号を入力してください");
                 return;
             }
+
+            initAudio();
 
             document.getElementById('setup-screen').style.display = 'none';
             document.getElementById('main-app').style.display = 'block';
@@ -482,12 +526,14 @@
                     return;
                 }
 
+                playScanBeep();
                 pendingValue = value;
                 showConfirmation(value);
                 return;
             }
 
             if (currentStep === 2) {
+                playScanBeep();
                 pendingValue = value;
                 showConfirmation(value);
                 return;
@@ -504,6 +550,7 @@
                     return;
                 }
 
+                playScanBeep();
                 currentData.seals.push(value);
                 updateSealDisplay();
                 updateUI();
