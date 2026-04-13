@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v11.2</title>
+    <title>点検スキャナー v11.3</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -189,7 +189,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">v11.2</div>
+        <div class="version-tag">v11.3</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -200,7 +200,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">v11.2</div>
+            <div class="version-tag">v11.3</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -333,36 +333,42 @@
             }
         }
 
-        function playScanBeep() {
-            try {
-                if (!audioContext) {
-                    initAudio();
-                }
+function playScanBeep() {
+    try {
+        if (!audioContext) initAudio();
+        if (!audioContext) return;
 
-                if (!audioContext) return;
-
-                if (audioContext.state === "suspended") {
-                    audioContext.resume();
-                }
-
-                const oscillator = audioContext.createOscillator();
-                const gainNode = audioContext.createGain();
-
-                oscillator.type = "sine";
-                oscillator.frequency.setValueAtTime(1000, audioContext.currentTime);
-
-                gainNode.gain.setValueAtTime(0.15, audioContext.currentTime);
-                gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.08);
-
-                oscillator.connect(gainNode);
-                gainNode.connect(audioContext.destination);
-
-                oscillator.start();
-                oscillator.stop(audioContext.currentTime + 0.08);
-            } catch (e) {
-                console.error("ビープ音再生失敗", e);
-            }
+        if (audioContext.state === "suspended") {
+            audioContext.resume();
         }
+
+        const now = audioContext.currentTime;
+
+        const osc1 = audioContext.createOscillator();
+        const gain1 = audioContext.createGain();
+        osc1.type = "sine";
+        osc1.frequency.setValueAtTime(880, now);
+        gain1.gain.setValueAtTime(0.12, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+        osc1.connect(gain1);
+        gain1.connect(audioContext.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.08);
+
+        const osc2 = audioContext.createOscillator();
+        const gain2 = audioContext.createGain();
+        osc2.type = "sine";
+        osc2.frequency.setValueAtTime(1320, now + 0.09);
+        gain2.gain.setValueAtTime(0.12, now + 0.09);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+        osc2.connect(gain2);
+        gain2.connect(audioContext.destination);
+        osc2.start(now + 0.09);
+        osc2.stop(now + 0.18);
+    } catch (e) {
+        console.error("音再生失敗", e);
+    }
+}
 
         function updateShopName() {
             let id = document.getElementById('shop-id').value;
