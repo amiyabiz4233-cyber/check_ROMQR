@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v11.3</title>
+    <title>点検スキャナー v12.2</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -88,6 +88,20 @@
         .btn-success { background: #22c55e; color: white; }
         .btn-secondary { background: #4b5563; color: white; }
         .btn-csv { background: #10b981; color: white; margin: 25px 0; }
+
+        .rom-toggle-btn {
+            flex: 1;
+            height: 50px;
+            margin-top: 5px;
+            padding: 0;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background: #fff;
+            color: #333;
+            font-size: 18px;
+            font-weight: bold;
+            box-sizing: border-box;
+        }
 
         .shop-name-display {
             color: #007bff;
@@ -189,7 +203,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">v11.3</div>
+        <div class="version-tag">v12.2</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -200,7 +214,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">v11.3</div>
+            <div class="version-tag">v12.2</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -229,10 +243,13 @@
                         onblur="handleRom1Blur()"
                         oninput="handleRom1Input()"
                     >
-                    <select id="rom-select" style="flex:1;" onchange="handleRomTypeChange()">
-                        <option value="KY">KY</option>
-                        <option value="EAI">EAI</option>
-                    </select>
+                    <button
+                        id="rom-select"
+                        type="button"
+                        class="rom-toggle-btn"
+                        data-value="KY"
+                        onclick="toggleRomType()"
+                    >KY</button>
                     <input
                         type="number"
                         inputmode="numeric"
@@ -240,9 +257,11 @@
                         style="flex:1;"
                         placeholder="数字(空欄可)"
                         onclick="this.select();"
+                        oninput="handleRom3Input()"
                     >
                 </div>
                 <button class="btn-primary" onclick="handleManualInput()">ROM確定</button>
+                <button class="btn-secondary" onclick="skipRomInput()">ROM入力スキップ</button>
             </div>
 
             <div id="seal-list-display" style="margin-top:10px;"></div>
@@ -333,40 +352,39 @@
             }
         }
 
-function playScanBeep() {
-    try {
-        if (!audioContext) initAudio();
-        if (!audioContext) return;
+        function playScanBeep() {
+            try {
+                if (!audioContext) initAudio();
+                if (!audioContext) return;
 
-        if (audioContext.state === "suspended") {
-            audioContext.resume();
+                if (audioContext.state === "suspended") {
+                    audioContext.resume();
+                }
+
+                const now = audioContext.currentTime;
+                const notes = [880, 1175, 1568];
+
+                notes.forEach((freq, i) => {
+                    const osc = audioContext.createOscillator();
+                    const gain = audioContext.createGain();
+
+                    osc.type = "sine";
+                    osc.frequency.setValueAtTime(freq, now + i * 0.06);
+
+                    gain.gain.setValueAtTime(0.12, now + i * 0.06);
+                    gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.08);
+
+                    osc.connect(gain);
+                    gain.connect(audioContext.destination);
+
+                    osc.start(now + i * 0.06);
+                    osc.stop(now + i * 0.06 + 0.08);
+                });
+
+            } catch (e) {
+                console.error("音再生失敗", e);
+            }
         }
-
-        const now = audioContext.currentTime;
-
-        const notes = [880, 1175, 1568]; // 上昇音（ラ→レ→ソくらい）
-
-        notes.forEach((freq, i) => {
-            const osc = audioContext.createOscillator();
-            const gain = audioContext.createGain();
-
-            osc.type = "sine";
-            osc.frequency.setValueAtTime(freq, now + i * 0.06);
-
-            gain.gain.setValueAtTime(0.12, now + i * 0.06);
-            gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.06 + 0.08);
-
-            osc.connect(gain);
-            gain.connect(audioContext.destination);
-
-            osc.start(now + i * 0.06);
-            osc.stop(now + i * 0.06 + 0.08);
-        });
-
-    } catch (e) {
-        console.error("音再生失敗", e);
-    }
-}
 
         function updateShopName() {
             let id = document.getElementById('shop-id').value;
@@ -470,15 +488,43 @@ function playScanBeep() {
             }, 50);
         }
 
+        // ===== ROM英字トグル =====
+        function getRomType() {
+            const btn = document.getElementById('rom-select');
+            return (btn && btn.dataset.value) ? btn.dataset.value : "KY";
+        }
+
+        function setRomType(value) {
+            const btn = document.getElementById('rom-select');
+            if (!btn) return;
+            btn.dataset.value = value;
+            btn.innerText = value;
+        }
+
+        function toggleRomType() {
+            const next = getRomType() === "KY" ? "EAI" : "KY";
+            setRomType(next);
+            handleRomTypeChange();
+
+            // EAIに切替時、rom-1が4桁あれば自動でROM確定（モーダル表示）
+            if (next === "EAI" && currentStep === 3) {
+                const rom1 = document.getElementById('rom-1');
+                if (rom1 && rom1.value.trim().length === 4) {
+                    setTimeout(() => handleManualInput(), 120);
+                }
+            }
+        }
+        // =========================
+
         function handleRomTypeChange() {
-            const romSelect = document.getElementById('rom-select');
             const rom3 = document.getElementById('rom-3');
+            if (!rom3) return;
 
-            if (!romSelect || !rom3) return;
+            const type = getRomType();
 
-            if (romSelect.value === "EAI") {
+            if (type === "EAI") {
                 rom3.value = "";
-            } else if (romSelect.value === "KY") {
+            } else if (type === "KY") {
                 focusRom3WithKeyboard();
             }
         }
@@ -487,18 +533,18 @@ function playScanBeep() {
             if (currentStep !== 3) return;
 
             const rom1 = document.getElementById('rom-1');
-            const romSelect = document.getElementById('rom-select');
-            const rom3 = document.getElementById('rom-3');
-
-            if (!rom1 || !romSelect || !rom3) return;
-            if (romSelect.value !== "KY") return;
+            if (!rom1) return;
 
             const r1 = rom1.value.trim();
+            if (r1.length !== 4) return;
 
-            if (r1.length === 4) {
-                setTimeout(() => {
-                    focusRom3WithKeyboard();
-                }, 120);
+            const type = getRomType();
+
+            if (type === "KY") {
+                setTimeout(() => focusRom3WithKeyboard(), 120);
+            } else if (type === "EAI") {
+                // EAI かつ 4桁入力で自動確定（モーダル表示）
+                setTimeout(() => handleManualInput(), 120);
             }
         }
 
@@ -506,21 +552,38 @@ function playScanBeep() {
             if (currentStep !== 3) return;
 
             const rom1 = document.getElementById('rom-1');
-            const romSelect = document.getElementById('rom-select');
             const rom3 = document.getElementById('rom-3');
 
-            if (!rom1 || !romSelect || !rom3) return;
+            if (!rom1 || !rom3) return;
 
             const r1 = rom1.value.trim();
             const r3 = rom3.value.trim();
 
             if (!r1) return;
-            if (romSelect.value !== "KY") return;
+            if (getRomType() !== "KY") return;
             if (r3) return;
 
             setTimeout(() => {
                 focusRom3WithKeyboard();
             }, 100);
+        }
+
+        // ★ rom-3 が3桁ちょうど入力で自動確定（KYのみ）
+        function handleRom3Input() {
+            if (currentStep !== 3) return;
+            if (getRomType() !== "KY") return;
+
+            const rom1 = document.getElementById('rom-1');
+            const rom3 = document.getElementById('rom-3');
+            if (!rom1 || !rom3) return;
+
+            const r1 = rom1.value.trim();
+            const r3 = rom3.value.trim();
+
+            if (r1.length !== 4) return;   // rom-1が4桁でないと発火しない
+            if (r3.length !== 3) return;   // rom-3が3桁ちょうどで発火
+
+            setTimeout(() => handleManualInput(), 120);
         }
 
         function handleScannedText(value) {
@@ -630,7 +693,7 @@ function playScanBeep() {
         function handleManualInput() {
             if (currentStep === 3) {
                 const r1 = document.getElementById('rom-1').value.trim();
-                const r2 = document.getElementById('rom-select').value;
+                const r2 = getRomType();
                 let r3 = document.getElementById('rom-3').value.trim();
 
                 if (!r1) {
@@ -652,9 +715,10 @@ function playScanBeep() {
                 prevRom1 = r1;
                 prevRom3 = r3;
 
-                currentData.romId = r1 + r2 + r3;
-                currentStep = 4;
-                updateUI();
+                // 直接確定せず、確認モーダルを表示
+                const romId = r1 + r2 + r3;
+                pendingValue = romId;
+                showConfirmation(romId);
                 return;
             }
 
@@ -669,6 +733,17 @@ function playScanBeep() {
             showConfirmation(val);
             document.getElementById('manual-input').value = "";
         }
+
+        // ===== ROM入力スキップ =====
+        function skipRomInput() {
+            if (currentStep !== 3) return;
+
+            currentData.romId = "なし";
+            currentStep = 4;
+            updateUI();
+            html5QrCode && html5QrCode.resume && html5QrCode.resume();
+        }
+        // ============================
 
         function skipStep() {
             if (currentStep === 2) {
