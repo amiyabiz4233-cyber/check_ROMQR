@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v12.4</title>
+    <title>点検スキャナー v12.5</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -52,6 +52,32 @@
         #reader {
             width: 100%;
             min-height: 280px;
+        }
+
+        /* ★ ライトボタン */
+        #btn-torch {
+            display: none;
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: rgba(0,0,0,0.6);
+            color: #fff;
+            font-size: 28px;
+            border: 2px solid #fff;
+            padding: 0;
+            margin: 0;
+            z-index: 100;
+            cursor: pointer;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            transition: background 0.2s, color 0.2s;
+        }
+
+        #btn-torch.torch-on {
+            background: #fbbf24;
+            color: #000;
         }
 
         .status-badge {
@@ -219,7 +245,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">v12.4</div>
+        <div class="version-tag">v12.5</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -230,7 +256,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">v12.4</div>
+            <div class="version-tag">v12.5</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -238,7 +264,11 @@
             </div>
 
             <div id="reader-container">
-                <div id="reader-wrapper"><div id="reader"></div></div>
+                <div id="reader-wrapper">
+                    <div id="reader"></div>
+                    <!-- ★ ライトON/OFFボタン -->
+                    <button id="btn-torch" type="button" onclick="toggleTorch()" title="ライトON/OFF">💡</button>
+                </div>
                 <button id="btn-skip" class="btn-secondary" style="display:none;" onclick="skipStep()">主基板/封印なし</button>
             </div>
 
@@ -323,6 +353,7 @@
         let prevRom3 = "";
         let toastTimer = null;
         let audioContext = null;
+        let torchOn = false;  // ★ ライト状態
 
         window.onload = () => {
             const listGrid = document.getElementById('display-shop-list');
@@ -436,6 +467,11 @@
                 } catch (e) {}
             }
 
+            // ★ 再起動時はライト状態リセット
+            torchOn = false;
+            updateTorchButton();
+            document.getElementById('btn-torch').style.display = 'none';
+
             html5QrCode = new Html5Qrcode("reader", { useBarCodeDetectorIfSupported: true });
 
             const config = {
@@ -452,7 +488,59 @@
                 (text) => {
                     handleScannedText(text);
                 }
-            ).catch(e => console.error(e));
+            ).then(() => {
+                // ★ カメラ起動後にトーチ対応チェック
+                setTimeout(checkTorchSupport, 500);
+            }).catch(e => console.error(e));
+        }
+
+        // ★ トーチ対応チェック
+        function checkTorchSupport() {
+            const btn = document.getElementById('btn-torch');
+            if (!btn || !html5QrCode) return;
+
+            try {
+                const capabilities = html5QrCode.getRunningTrackCapabilities();
+                if (capabilities && capabilities.torch) {
+                    btn.style.display = 'block';
+                } else {
+                    btn.style.display = 'none';
+                }
+            } catch (e) {
+                console.warn("トーチ対応判定失敗", e);
+                btn.style.display = 'none';
+            }
+        }
+
+        // ★ ライトON/OFF切替
+        async function toggleTorch() {
+            if (!html5QrCode) return;
+
+            const newState = !torchOn;
+
+            try {
+                await html5QrCode.applyVideoConstraints({
+                    advanced: [{ torch: newState }]
+                });
+                torchOn = newState;
+                updateTorchButton();
+            } catch (e) {
+                console.error("ライト切替失敗", e);
+                alert("このデバイスはライト機能に対応していません");
+                document.getElementById('btn-torch').style.display = 'none';
+            }
+        }
+
+        // ★ ライトボタン見た目更新
+        function updateTorchButton() {
+            const btn = document.getElementById('btn-torch');
+            if (!btn) return;
+
+            if (torchOn) {
+                btn.classList.add('torch-on');
+            } else {
+                btn.classList.remove('torch-on');
+            }
         }
 
         function isValidMachineId(value) {
@@ -465,12 +553,10 @@
             return typeof value === "string" && /^B/i.test(value);
         }
 
-        // 主基板スキャン時の除外判定（BISHOP始まりは封印QRなので無効）
         function isInvalidMainBoardQr(value) {
             return typeof value === "string" && /^BISHOP/i.test(value);
         }
 
-        // ★ 追加：主基板スキャン時の警告判定（6桁数字 = 台番号と誤読の疑い）
         function isSuspiciousMainBoardValue(value) {
             return typeof value === "string" && /^\d{6}$/.test(value);
         }
@@ -514,7 +600,6 @@
             }, 50);
         }
 
-        // ===== ROM英字トグル =====
         function getRomType() {
             const btn = document.getElementById('rom-select');
             return (btn && btn.dataset.value) ? btn.dataset.value : "KY";
@@ -532,7 +617,6 @@
             setRomType(next);
             handleRomTypeChange();
 
-            // EAIに切替時、rom-1が4桁あれば自動でROM確定（モーダル表示）
             if (next === "EAI" && currentStep === 3) {
                 const rom1 = document.getElementById('rom-1');
                 if (rom1 && rom1.value.trim().length === 4) {
@@ -540,7 +624,6 @@
                 }
             }
         }
-        // =========================
 
         function handleRomTypeChange() {
             const rom3 = document.getElementById('rom-3');
@@ -624,7 +707,6 @@
             }
 
             if (currentStep === 2) {
-                // 「BISHOP」始まりのQR（封印QRの誤読）は無音で無視
                 if (isInvalidMainBoardQr(value)) {
                     html5QrCode.resume();
                     return;
@@ -633,7 +715,6 @@
                 playScanBeep();
                 pendingValue = value;
 
-                // ★ 6桁数字なら警告モーダルで確認
                 const isWarning = isSuspiciousMainBoardValue(value);
                 showConfirmation(value, isWarning);
                 return;
@@ -660,7 +741,6 @@
             }
         }
 
-        // ★ 警告モード対応版
         function showConfirmation(value, isWarning = false) {
             const modal = document.getElementById('confirm-modal');
             const warning = document.getElementById('warning-msg');
