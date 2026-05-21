@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v12.2</title>
+    <title>点検スキャナー v12.3</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -203,7 +203,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">v12.2</div>
+        <div class="version-tag">v12.3</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -214,7 +214,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">v12.2</div>
+            <div class="version-tag">v12.3</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -449,6 +449,11 @@
             return typeof value === "string" && /^B/i.test(value);
         }
 
+        // ★ 追加：主基板スキャン時の除外判定（BISHOP始まりは封印QRなので無効）
+        function isInvalidMainBoardQr(value) {
+            return typeof value === "string" && /^BISHOP/i.test(value);
+        }
+
         function focusRomInput() {
             const rom1 = document.getElementById('rom-1');
             if (!rom1) return;
@@ -600,6 +605,12 @@
             }
 
             if (currentStep === 2) {
+                // ★ 主基板スキャン時、「BISHOP」始まりのQR（封印QRの誤読）は無音で無視
+                if (isInvalidMainBoardQr(value)) {
+                    html5QrCode.resume();
+                    return;
+                }
+
                 playScanBeep();
                 pendingValue = value;
                 showConfirmation(value);
