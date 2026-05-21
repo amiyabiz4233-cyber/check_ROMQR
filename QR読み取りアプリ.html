@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v12.3</title>
+    <title>点検スキャナー v12.4</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -148,6 +148,19 @@
             padding: 25px;
             border-radius: 20px;
             text-align: center;
+            box-sizing: border-box;
+        }
+
+        #warning-msg {
+            display: none;
+            color: #fff;
+            background: #dc2626;
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 15px;
+            font-weight: bold;
+            font-size: 16px;
+            line-height: 1.4;
         }
 
         .seal-tag {
@@ -194,6 +207,9 @@
 
     <div id="confirm-overlay">
         <div id="confirm-modal">
+            <div id="warning-msg">
+                ⚠ 6桁数字です<br>台番号と誤読していませんか？
+            </div>
             <div id="scanned-display" style="font-size:32px; font-weight:bold; color:#ff4500; margin-bottom:20px;">----</div>
             <button class="btn-success" onclick="approveValue()">OK</button>
             <button class="btn-secondary" onclick="rejectValue()" style="margin-top:10px;">戻る</button>
@@ -203,7 +219,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">v12.3</div>
+        <div class="version-tag">v12.4</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -214,7 +230,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">v12.3</div>
+            <div class="version-tag">v12.4</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -449,9 +465,14 @@
             return typeof value === "string" && /^B/i.test(value);
         }
 
-        // ★ 追加：主基板スキャン時の除外判定（BISHOP始まりは封印QRなので無効）
+        // 主基板スキャン時の除外判定（BISHOP始まりは封印QRなので無効）
         function isInvalidMainBoardQr(value) {
             return typeof value === "string" && /^BISHOP/i.test(value);
+        }
+
+        // ★ 追加：主基板スキャン時の警告判定（6桁数字 = 台番号と誤読の疑い）
+        function isSuspiciousMainBoardValue(value) {
+            return typeof value === "string" && /^\d{6}$/.test(value);
         }
 
         function focusRomInput() {
@@ -548,7 +569,6 @@
             if (type === "KY") {
                 setTimeout(() => focusRom3WithKeyboard(), 120);
             } else if (type === "EAI") {
-                // EAI かつ 4桁入力で自動確定（モーダル表示）
                 setTimeout(() => handleManualInput(), 120);
             }
         }
@@ -573,7 +593,6 @@
             }, 100);
         }
 
-        // ★ rom-3 が3桁ちょうど入力で自動確定（KYのみ）
         function handleRom3Input() {
             if (currentStep !== 3) return;
             if (getRomType() !== "KY") return;
@@ -585,8 +604,8 @@
             const r1 = rom1.value.trim();
             const r3 = rom3.value.trim();
 
-            if (r1.length !== 4) return;   // rom-1が4桁でないと発火しない
-            if (r3.length !== 3) return;   // rom-3が3桁ちょうどで発火
+            if (r1.length !== 4) return;
+            if (r3.length !== 3) return;
 
             setTimeout(() => handleManualInput(), 120);
         }
@@ -605,7 +624,7 @@
             }
 
             if (currentStep === 2) {
-                // ★ 主基板スキャン時、「BISHOP」始まりのQR（封印QRの誤読）は無音で無視
+                // 「BISHOP」始まりのQR（封印QRの誤読）は無音で無視
                 if (isInvalidMainBoardQr(value)) {
                     html5QrCode.resume();
                     return;
@@ -613,7 +632,10 @@
 
                 playScanBeep();
                 pendingValue = value;
-                showConfirmation(value);
+
+                // ★ 6桁数字なら警告モーダルで確認
+                const isWarning = isSuspiciousMainBoardValue(value);
+                showConfirmation(value, isWarning);
                 return;
             }
 
@@ -638,8 +660,26 @@
             }
         }
 
-        function showConfirmation(value) {
-            document.getElementById('scanned-display').innerText = value;
+        // ★ 警告モード対応版
+        function showConfirmation(value, isWarning = false) {
+            const modal = document.getElementById('confirm-modal');
+            const warning = document.getElementById('warning-msg');
+            const display = document.getElementById('scanned-display');
+
+            display.innerText = value;
+
+            if (isWarning) {
+                warning.style.display = 'block';
+                modal.style.border = '4px solid #dc2626';
+                modal.style.background = '#fff5f5';
+                display.style.color = '#dc2626';
+            } else {
+                warning.style.display = 'none';
+                modal.style.border = 'none';
+                modal.style.background = '#fff';
+                display.style.color = '#ff4500';
+            }
+
             document.getElementById('confirm-overlay').style.display = 'flex';
         }
 
@@ -726,7 +766,6 @@
                 prevRom1 = r1;
                 prevRom3 = r3;
 
-                // 直接確定せず、確認モーダルを表示
                 const romId = r1 + r2 + r3;
                 pendingValue = romId;
                 showConfirmation(romId);
@@ -745,7 +784,6 @@
             document.getElementById('manual-input').value = "";
         }
 
-        // ===== ROM入力スキップ =====
         function skipRomInput() {
             if (currentStep !== 3) return;
 
@@ -754,7 +792,6 @@
             updateUI();
             html5QrCode && html5QrCode.resume && html5QrCode.resume();
         }
-        // ============================
 
         function skipStep() {
             if (currentStep === 2) {
