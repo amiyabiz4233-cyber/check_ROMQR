@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v12.5</title>
+    <title>点検スキャナー v12.6</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -54,7 +54,6 @@
             min-height: 280px;
         }
 
-        /* ★ ライトボタン */
         #btn-torch {
             display: none;
             position: absolute;
@@ -114,6 +113,7 @@
         .btn-success { background: #22c55e; color: white; }
         .btn-secondary { background: #4b5563; color: white; }
         .btn-csv { background: #10b981; color: white; margin: 25px 0; }
+        .btn-danger { background: #dc2626; color: white; }
 
         .rom-toggle-btn {
             flex: 1;
@@ -226,6 +226,21 @@
             z-index: 10000;
             box-shadow: 0 4px 12px rgba(0,0,0,0.25);
         }
+
+        /* ★ 自動保存ステータス表示 */
+        .autosave-status {
+            font-size: 11px;
+            color: #16a34a;
+            text-align: right;
+            margin-top: 8px;
+            padding: 4px 8px;
+            background: #f0fdf4;
+            border-radius: 6px;
+        }
+        .autosave-status.empty {
+            color: #999;
+            background: #f5f5f5;
+        }
     </style>
 </head>
 
@@ -245,7 +260,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">v12.5</div>
+        <div class="version-tag">v12.6</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -256,7 +271,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">v12.5</div>
+            <div class="version-tag">v12.6</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -266,7 +281,6 @@
             <div id="reader-container">
                 <div id="reader-wrapper">
                     <div id="reader"></div>
-                    <!-- ★ ライトON/OFFボタン -->
                     <button id="btn-torch" type="button" onclick="toggleTorch()" title="ライトON/OFF">💡</button>
                 </div>
                 <button id="btn-skip" class="btn-secondary" style="display:none;" onclick="skipStep()">主基板/封印なし</button>
@@ -313,6 +327,9 @@
             <div id="seal-list-display" style="margin-top:10px;"></div>
             <button id="btn-finish" class="btn-success" style="display:none;" onclick="finishMachine()">登録して次の台へ</button>
             <button id="btn-back" class="btn-secondary" style="display:none;" onclick="goBack()">前へ戻る</button>
+
+            <!-- ★ 自動保存ステータス -->
+            <div id="autosave-status" class="autosave-status empty">💾 自動保存: 未保存</div>
         </div>
 
         <div class="card" style="overflow-x:auto;">
@@ -330,6 +347,7 @@
         </div>
 
         <button class="btn-csv" onclick="downloadCSV()">現在のデータをCSV保存</button>
+        <button class="btn-danger" onclick="manualClearState()" style="margin-bottom:30px;">🗑 自動保存データを手動削除</button>
     </div>
 
     <script>
@@ -343,6 +361,9 @@
 
         const MAIL_TO = "rom_receive@bishop777.com";
 
+        // ★ 自動保存キー
+        const STORAGE_KEY = "inspector_v12_state";
+
         let staffId, shopId;
         let currentStep = 1;
         let currentData = { seals: [] };
@@ -353,8 +374,136 @@
         let prevRom3 = "";
         let toastTimer = null;
         let audioContext = null;
-        let torchOn = false;  // ★ ライト状態
+        let torchOn = false;
 
+        // ========================================
+        // ★ 自動保存・復元処理（追加）
+        // ========================================
+        function saveState() {
+            try {
+                const state = {
+                    staffId: staffId,
+                    shopId: shopId,
+                    allData: allData,
+                    currentData: currentData,
+                    currentStep: currentStep,
+                    prevRom1: prevRom1,
+                    prevRom3: prevRom3,
+                    savedAt: new Date().toISOString()
+                };
+                localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+                updateAutosaveDisplay();
+            } catch (e) {
+                console.error("自動保存失敗:", e);
+            }
+        }
+
+        function loadState() {
+            try {
+                const json = localStorage.getItem(STORAGE_KEY);
+                if (!json) return null;
+                return JSON.parse(json);
+            } catch (e) {
+                console.error("復元データ読込失敗:", e);
+                return null;
+            }
+        }
+
+        function clearState() {
+            try {
+                localStorage.removeItem(STORAGE_KEY);
+            } catch (e) {}
+            updateAutosaveDisplay();
+        }
+
+        function hasMeaningfulSavedData(saved) {
+            if (!saved) return false;
+            if (saved.allData && saved.allData.length > 0) return true;
+            if (saved.currentData && saved.currentData.machineId) return true;
+            if (saved.currentData && saved.currentData.seals && saved.currentData.seals.length > 0) return true;
+            return false;
+        }
+
+        function updateAutosaveDisplay() {
+            const el = document.getElementById('autosave-status');
+            if (!el) return;
+
+            let json = null;
+            try {
+                json = localStorage.getItem(STORAGE_KEY);
+            } catch (e) {}
+
+            if (!json) {
+                el.innerText = "💾 自動保存: 未保存";
+                el.classList.add("empty");
+                return;
+            }
+
+            try {
+                const data = JSON.parse(json);
+                const dt = new Date(data.savedAt);
+                const time = dt.toLocaleTimeString();
+                const count = (data.allData || []).length;
+                const inProgress = (data.currentData && data.currentData.machineId)
+                    ? ` (作業中: 台番${data.currentData.machineId})` : "";
+                el.innerText = `💾 自動保存: ${time} / 完了${count}台${inProgress}`;
+                el.classList.remove("empty");
+            } catch (e) {
+                el.innerText = "💾 自動保存: エラー";
+                el.classList.add("empty");
+            }
+        }
+
+        function restoreState(saved) {
+            staffId = saved.staffId;
+            shopId = saved.shopId;
+            allData = saved.allData || [];
+            currentData = saved.currentData || { seals: [] };
+            if (!currentData.seals) currentData.seals = [];
+            currentStep = saved.currentStep || 1;
+            prevRom1 = saved.prevRom1 || "";
+            prevRom3 = saved.prevRom3 || "";
+
+            // 履歴テーブル再描画（古い順で push → 表示は新しい順）
+            const tbody = document.getElementById('history-tbody');
+            tbody.innerHTML = "";
+            allData.forEach(d => {
+                const row = `<tr>
+                    <td>${d.machineId || ""}</td>
+                    <td>${d.mainBoardId || ""}</td>
+                    <td>${d.romId || ""}</td>
+                    <td>${d.sealsText || ""}</td>
+                </tr>`;
+                tbody.insertAdjacentHTML('afterbegin', row);
+            });
+
+            // 封印リスト再描画
+            updateSealDisplay();
+
+            // ROM入力欄に前回値を戻す
+            document.getElementById('rom-1').value = prevRom1 || "";
+            document.getElementById('rom-3').value = prevRom3 || "";
+            handleRomTypeChange();
+
+            initAudio();
+
+            document.getElementById('setup-screen').style.display = 'none';
+            document.getElementById('main-app').style.display = 'block';
+
+            updateUI();
+            initScanner();
+            updateAutosaveDisplay();
+        }
+
+        function manualClearState() {
+            if (!confirm("自動保存データを削除しますか？\n\n現在の作業中データもすべて消えます。\n（テーブル表示はそのまま残ります）")) return;
+            clearState();
+            alert("自動保存データを削除しました。");
+        }
+
+        // ========================================
+        // 既存処理（自動保存呼び出しを追加）
+        // ========================================
         window.onload = () => {
             const listGrid = document.getElementById('display-shop-list');
             Object.keys(shopList).sort().forEach(id => {
@@ -365,6 +514,28 @@
             });
 
             handleRomTypeChange();
+            updateAutosaveDisplay();
+
+            // ★ 復元確認
+            const saved = loadState();
+            if (hasMeaningfulSavedData(saved)) {
+                const dt = new Date(saved.savedAt).toLocaleString();
+                const count = (saved.allData || []).length;
+                const inProgress = (saved.currentData && saved.currentData.machineId)
+                    ? `\n作業中: 台番${saved.currentData.machineId}` : "";
+                const msg =
+                    `未保存データが見つかりました。\n\n` +
+                    `保存日時: ${dt}\n` +
+                    `完了済み: ${count}台${inProgress}\n` +
+                    `社員: ${saved.staffId} / 店舗: ${saved.shopId}\n\n` +
+                    `OK = 復元して続きから\n` +
+                    `キャンセル = 新規開始（保存データは破棄）`;
+                if (confirm(msg)) {
+                    restoreState(saved);
+                } else {
+                    clearState();
+                }
+            }
         };
 
         function scrollToTopInstant() {
@@ -458,6 +629,7 @@
 
             updateUI();
             initScanner();
+            saveState(); // ★ 開始時点で保存
         }
 
         async function initScanner() {
@@ -467,7 +639,6 @@
                 } catch (e) {}
             }
 
-            // ★ 再起動時はライト状態リセット
             torchOn = false;
             updateTorchButton();
             document.getElementById('btn-torch').style.display = 'none';
@@ -489,12 +660,10 @@
                     handleScannedText(text);
                 }
             ).then(() => {
-                // ★ カメラ起動後にトーチ対応チェック
                 setTimeout(checkTorchSupport, 500);
             }).catch(e => console.error(e));
         }
 
-        // ★ トーチ対応チェック
         function checkTorchSupport() {
             const btn = document.getElementById('btn-torch');
             if (!btn || !html5QrCode) return;
@@ -512,7 +681,6 @@
             }
         }
 
-        // ★ ライトON/OFF切替
         async function toggleTorch() {
             if (!html5QrCode) return;
 
@@ -531,7 +699,6 @@
             }
         }
 
-        // ★ ライトボタン見た目更新
         function updateTorchButton() {
             const btn = document.getElementById('btn-torch');
             if (!btn) return;
@@ -736,6 +903,7 @@
                 updateSealDisplay();
                 updateUI();
                 showScanToast("封印を登録しました");
+                saveState(); // ★ 封印追加ごとに保存
                 html5QrCode.resume();
                 return;
             }
@@ -771,6 +939,7 @@
                 currentStep = 2;
                 updateUI();
                 html5QrCode.resume();
+                saveState(); // ★
                 return;
             }
 
@@ -780,6 +949,7 @@
                 updateUI();
                 focusRomInput();
                 html5QrCode.resume();
+                saveState(); // ★
                 return;
             }
 
@@ -788,6 +958,7 @@
                 currentStep = 4;
                 updateUI();
                 html5QrCode.resume();
+                saveState(); // ★
                 return;
             }
         }
@@ -817,8 +988,10 @@
         }
 
         function updateSealDisplay() {
-            document.getElementById('seal-list-display').innerHTML =
-                currentData.seals.map(s => `<span class="seal-tag">${s}</span>`).join('');
+            const target = document.getElementById('seal-list-display');
+            if (!target) return;
+            const seals = (currentData && currentData.seals) ? currentData.seals : [];
+            target.innerHTML = seals.map(s => `<span class="seal-tag">${s}</span>`).join('');
         }
 
         function handleManualInput() {
@@ -871,6 +1044,7 @@
             currentStep = 4;
             updateUI();
             html5QrCode && html5QrCode.resume && html5QrCode.resume();
+            saveState(); // ★
         }
 
         function skipStep() {
@@ -879,6 +1053,7 @@
                 currentStep = 3;
                 updateUI();
                 focusRomInput();
+                saveState(); // ★
                 return;
             }
 
@@ -922,6 +1097,7 @@
             handleRomTypeChange();
 
             updateUI();
+            saveState(); // ★ 1台完了ごとに必ず保存
         }
 
         function goBack() {
@@ -933,6 +1109,7 @@
             }
 
             updateUI();
+            saveState(); // ★
         }
 
         function buildCsvBlobAndFileName() {
@@ -982,6 +1159,19 @@
             setTimeout(() => {
                 window.location.href = `mailto:${MAIL_TO}?subject=${subject}&body=${body}`;
             }, 500);
+
+            // ★ CSV保存後に自動保存データの削除を確認
+            setTimeout(() => {
+                if (confirm("CSVを保存しました。\n\n自動保存データを削除しますか？\n\nOK = 削除して新規開始\nキャンセル = 残す（再起動時に復元可能）")) {
+                    clearState();
+                    allData = [];
+                    currentData = { seals: [] };
+                    currentStep = 1;
+                    document.getElementById('history-tbody').innerHTML = "";
+                    document.getElementById('seal-list-display').innerHTML = "";
+                    updateUI();
+                }
+            }, 1500);
         }
     </script>
 </body>
