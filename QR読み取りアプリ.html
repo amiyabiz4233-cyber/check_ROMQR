@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V13.2</title>
+    <title>点検スキャナー V13.3</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -329,7 +329,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V13.2</div>
+        <div class="version-tag">V13.3</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -340,7 +340,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V13.2</div>
+            <div class="version-tag">V13.3</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -390,6 +390,7 @@
                         oninput="handleRom3Input()"
                     >
                 </div>
+                <button type="button" id="rom-kb-toggle" class="btn-secondary" style="margin-top:6px;" onclick="toggleRomKbMode()">⌨ 数字入力</button>
                 <button id="btn-rom-confirm" class="btn-primary" onclick="handleManualInput()">ROM確定</button>
                 <button class="btn-secondary" onclick="skipRomInput()">ROM入力スキップ</button>
             </div>
@@ -431,7 +432,7 @@
 
         const MAIL_TO = "rom_receive@bishop777.com";
 
-        // ★ 自動保存キー（※V13.2でも変更しない：既存の保存データを復元できなくなるため）
+        // ★ 自動保存キー（※V13.3でも変更しない：既存の保存データを復元できなくなるため）
         const STORAGE_KEY = "inspector_v12_state";
 
         let staffId, shopId;
@@ -585,6 +586,7 @@
 
             handleRomTypeChange();
             updateAutosaveDisplay();
+            applyRomKbMode(); // ★ 保存済みのROMキーボードモードを反映
 
             // ★ 復元確認
             const saved = loadState();
@@ -867,6 +869,63 @@
             } else if (next === "KY") {
                 // ★ KYに切り替えたらROM①へカーソル移動＋既存値を全選択
                 setTimeout(() => focusRomInput(), 60);
+            }
+        }
+
+        // ========================================
+        // ★ ROM入力欄のキーボードモード（数字 / 通常(音声)）
+        //    選択をlocalStorageに保存し、次回も既定として復元
+        // ========================================
+        const ROM_KB_KEY = "rom_keyboard_mode"; // "numeric" or "voice"
+
+        function getRomKbMode() {
+            try {
+                return localStorage.getItem(ROM_KB_KEY) || "numeric";
+            } catch (e) {
+                return "numeric";
+            }
+        }
+
+        function applyRomKbMode() {
+            const mode = getRomKbMode();
+            const im = (mode === "numeric") ? "numeric" : "text";
+
+            ['rom-1', 'rom-3'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.setAttribute('inputmode', im);
+            });
+
+            const btn = document.getElementById('rom-kb-toggle');
+            if (btn) {
+                btn.innerText = (mode === "numeric")
+                    ? "⌨ 数字入力中（押すと通常/音声）"
+                    : "🎤 通常キーボード中（押すと数字）";
+            }
+        }
+
+        function setRomKbMode(mode) {
+            try {
+                localStorage.setItem(ROM_KB_KEY, mode);
+            } catch (e) {}
+            applyRomKbMode();
+        }
+
+        function toggleRomKbMode() {
+            setRomKbMode(getRomKbMode() === "numeric" ? "voice" : "numeric");
+
+            // キーボードを切り替えるため、一度blurして再フォーカス
+            const rom1 = document.getElementById('rom-1');
+            if (rom1) {
+                rom1.blur();
+                setTimeout(() => {
+                    try {
+                        rom1.focus({ preventScroll: true });
+                    } catch (e) {
+                        rom1.focus();
+                    }
+                    rom1.click();
+                    rom1.select();
+                }, 60);
             }
         }
 
@@ -1297,4 +1356,3 @@
     </script>
 </body>
 </html>
-
