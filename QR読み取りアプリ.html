@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー v12.6</title>
+    <title>点検スキャナー V13.0</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -54,11 +54,10 @@
             min-height: 280px;
         }
 
-        #btn-torch {
+        .torch-btn {
             display: none;
             position: absolute;
             bottom: 10px;
-            right: 10px;
             width: 60px;
             height: 60px;
             border-radius: 50%;
@@ -74,7 +73,11 @@
             transition: background 0.2s, color 0.2s;
         }
 
-        #btn-torch.torch-on {
+        /* ★ 右下・左下の配置 */
+        #btn-torch { right: 10px; }
+        #btn-torch-left { left: 10px; }
+
+        .torch-btn.torch-on {
             background: #fbbf24;
             color: #000;
         }
@@ -175,6 +178,63 @@
             border-radius: 20px;
             text-align: center;
             box-sizing: border-box;
+            transform: translateY(-12vh); /* ★ センターから少し上に移動 */
+        }
+
+        /* ★ OKボタンを約3倍の大きさに */
+        #confirm-modal .btn-success {
+            min-height: 150px;
+            font-size: 40px;
+            padding: 20px;
+            margin-top: 0;
+        }
+
+        /* ★ ROM確定ボタンを約3倍の大きさに */
+        #btn-rom-confirm {
+            min-height: 150px;
+            font-size: 36px;
+            padding: 20px;
+        }
+
+        /* ★ 「登録して次の台へ」ボタンを約3倍の大きさに */
+        #btn-finish {
+            min-height: 150px;
+            font-size: 36px;
+            padding: 20px;
+        }
+
+        /* ★ 戻る確認（赤警告）オーバーレイ */
+        #back-confirm-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(120,0,0,0.85);
+            z-index: 10001;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #back-confirm-modal {
+            background: #fff;
+            width: 88%;
+            max-width: 420px;
+            padding: 30px 20px;
+            border-radius: 20px;
+            text-align: center;
+            box-sizing: border-box;
+            border: 6px solid #dc2626;
+            transform: translateY(-12vh); /* ★ センターから少し上 */
+        }
+
+        #back-confirm-modal .back-warning-title {
+            color: #dc2626;
+            font-size: 26px;
+            font-weight: bold;
+            line-height: 1.5;
+            margin-bottom: 25px;
         }
 
         #warning-msg {
@@ -257,10 +317,19 @@
         </div>
     </div>
 
+    <!-- ★ 戻る確認（赤警告） -->
+    <div id="back-confirm-overlay">
+        <div id="back-confirm-modal">
+            <div class="back-warning-title">⚠ 本当に戻りますか？</div>
+            <button class="btn-danger" onclick="confirmBack()">戻る</button>
+            <button class="btn-secondary" onclick="cancelBack()" style="margin-top:10px;">キャンセル</button>
+        </div>
+    </div>
+
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">v12.6</div>
+        <div class="version-tag">V13.0</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -271,7 +340,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">v12.6</div>
+            <div class="version-tag">V13.0</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -281,7 +350,8 @@
             <div id="reader-container">
                 <div id="reader-wrapper">
                     <div id="reader"></div>
-                    <button id="btn-torch" type="button" onclick="toggleTorch()" title="ライトON/OFF">💡</button>
+                    <button id="btn-torch" type="button" class="torch-btn" onclick="toggleTorch()" title="ライトON/OFF">💡</button>
+                    <button id="btn-torch-left" type="button" class="torch-btn" onclick="toggleTorch()" title="ライトON/OFF">💡</button>
                 </div>
                 <button id="btn-skip" class="btn-secondary" style="display:none;" onclick="skipStep()">主基板/封印なし</button>
             </div>
@@ -320,7 +390,7 @@
                         oninput="handleRom3Input()"
                     >
                 </div>
-                <button class="btn-primary" onclick="handleManualInput()">ROM確定</button>
+                <button id="btn-rom-confirm" class="btn-primary" onclick="handleManualInput()">ROM確定</button>
                 <button class="btn-secondary" onclick="skipRomInput()">ROM入力スキップ</button>
             </div>
 
@@ -361,7 +431,7 @@
 
         const MAIL_TO = "rom_receive@bishop777.com";
 
-        // ★ 自動保存キー
+        // ★ 自動保存キー（※V13.0でも変更しない：既存の保存データを復元できなくなるため）
         const STORAGE_KEY = "inspector_v12_state";
 
         let staffId, shopId;
@@ -377,7 +447,7 @@
         let torchOn = false;
 
         // ========================================
-        // ★ 自動保存・復元処理（追加）
+        // ★ 自動保存・復元処理
         // ========================================
         function saveState() {
             try {
@@ -641,7 +711,7 @@
 
             torchOn = false;
             updateTorchButton();
-            document.getElementById('btn-torch').style.display = 'none';
+            getTorchButtons().forEach(b => b.style.display = 'none');
 
             html5QrCode = new Html5Qrcode("reader", { useBarCodeDetectorIfSupported: true });
 
@@ -664,20 +734,21 @@
             }).catch(e => console.error(e));
         }
 
+        function getTorchButtons() {
+            return document.querySelectorAll('.torch-btn');
+        }
+
         function checkTorchSupport() {
-            const btn = document.getElementById('btn-torch');
-            if (!btn || !html5QrCode) return;
+            const btns = getTorchButtons();
+            if (!btns.length || !html5QrCode) return;
 
             try {
                 const capabilities = html5QrCode.getRunningTrackCapabilities();
-                if (capabilities && capabilities.torch) {
-                    btn.style.display = 'block';
-                } else {
-                    btn.style.display = 'none';
-                }
+                const show = !!(capabilities && capabilities.torch);
+                btns.forEach(b => b.style.display = show ? 'block' : 'none');
             } catch (e) {
                 console.warn("トーチ対応判定失敗", e);
-                btn.style.display = 'none';
+                btns.forEach(b => b.style.display = 'none');
             }
         }
 
@@ -695,19 +766,18 @@
             } catch (e) {
                 console.error("ライト切替失敗", e);
                 alert("このデバイスはライト機能に対応していません");
-                document.getElementById('btn-torch').style.display = 'none';
+                getTorchButtons().forEach(b => b.style.display = 'none');
             }
         }
 
         function updateTorchButton() {
-            const btn = document.getElementById('btn-torch');
-            if (!btn) return;
-
-            if (torchOn) {
-                btn.classList.add('torch-on');
-            } else {
-                btn.classList.remove('torch-on');
-            }
+            getTorchButtons().forEach(btn => {
+                if (torchOn) {
+                    btn.classList.add('torch-on');
+                } else {
+                    btn.classList.remove('torch-on');
+                }
+            });
         }
 
         function isValidMachineId(value) {
@@ -782,13 +852,21 @@
         function toggleRomType() {
             const next = getRomType() === "KY" ? "EAI" : "KY";
             setRomType(next);
-            handleRomTypeChange();
 
-            if (next === "EAI" && currentStep === 3) {
-                const rom1 = document.getElementById('rom-1');
-                if (rom1 && rom1.value.trim().length === 4) {
-                    setTimeout(() => handleManualInput(), 120);
+            const rom3 = document.getElementById('rom-3');
+
+            if (next === "EAI") {
+                if (rom3) rom3.value = "";
+
+                if (currentStep === 3) {
+                    const rom1 = document.getElementById('rom-1');
+                    if (rom1 && rom1.value.trim().length === 4) {
+                        setTimeout(() => handleManualInput(), 120);
+                    }
                 }
+            } else if (next === "KY") {
+                // ★ KYに切り替えたらROM①へカーソル移動＋既存値を全選択
+                setTimeout(() => focusRomInput(), 60);
             }
         }
 
@@ -963,9 +1041,23 @@
             }
         }
 
+        // ★ 戻る押下：即戻らず赤い警告で確認
         function rejectValue() {
+            document.getElementById('back-confirm-overlay').style.display = 'flex';
+        }
+
+        // ★ 赤警告で「戻る」確定：実際に戻ってスキャン再開
+        function confirmBack() {
+            document.getElementById('back-confirm-overlay').style.display = 'none';
             document.getElementById('confirm-overlay').style.display = 'none';
-            html5QrCode.resume();
+            try {
+                if (html5QrCode && html5QrCode.resume) html5QrCode.resume();
+            } catch (e) {}
+        }
+
+        // ★ 赤警告で「キャンセル」：OK/戻る画面に復帰
+        function cancelBack() {
+            document.getElementById('back-confirm-overlay').style.display = 'none';
         }
 
         function updateUI() {
