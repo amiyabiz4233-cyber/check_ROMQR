@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V13.3</title>
+    <title>点検スキャナー V13.4</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -117,6 +117,25 @@
         .btn-secondary { background: #4b5563; color: white; }
         .btn-csv { background: #10b981; color: white; margin: 25px 0; }
         .btn-danger { background: #dc2626; color: white; }
+
+        /* ★ ROMキーボード切替ボタン（目立たせる＋モードで色変化） */
+        #rom-kb-toggle {
+            height: 64px;
+            font-size: 22px;
+            font-weight: bold;
+            border: 3px solid transparent;
+            border-radius: 12px;
+            color: #fff;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.25);
+        }
+        #rom-kb-toggle.kb-numeric {
+            background: #0d9488;       /* ティール（数字モード） */
+            border-color: #0f766e;
+        }
+        #rom-kb-toggle.kb-voice {
+            background: #f97316;       /* オレンジ（音声モード） */
+            border-color: #ea580c;
+        }
 
         .rom-toggle-btn {
             flex: 1;
@@ -329,7 +348,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V13.3</div>
+        <div class="version-tag">V13.4</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -340,7 +359,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V13.3</div>
+            <div class="version-tag">V13.4</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -432,7 +451,7 @@
 
         const MAIL_TO = "rom_receive@bishop777.com";
 
-        // ★ 自動保存キー（※V13.3でも変更しない：既存の保存データを復元できなくなるため）
+        // ★ 自動保存キー（※V13.4でも変更しない：既存の保存データを復元できなくなるため）
         const STORAGE_KEY = "inspector_v12_state";
 
         let staffId, shopId;
@@ -897,9 +916,15 @@
 
             const btn = document.getElementById('rom-kb-toggle');
             if (btn) {
-                btn.innerText = (mode === "numeric")
-                    ? "⌨ 数字入力中（押すと通常/音声）"
-                    : "🎤 通常キーボード中（押すと数字）";
+                if (mode === "numeric") {
+                    btn.innerText = "⌨ 数字入力モード（タップで🎤音声）";
+                    btn.classList.add('kb-numeric');
+                    btn.classList.remove('kb-voice');
+                } else {
+                    btn.innerText = "🎤 音声入力モード（タップで⌨数字）";
+                    btn.classList.add('kb-voice');
+                    btn.classList.remove('kb-numeric');
+                }
             }
         }
 
