@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V13.4</title>
+    <title>点検スキャナー V13.5</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -348,7 +348,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V13.4</div>
+        <div class="version-tag">V13.5</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -359,7 +359,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V13.4</div>
+            <div class="version-tag">V13.5</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -451,7 +451,7 @@
 
         const MAIL_TO = "rom_receive@bishop777.com";
 
-        // ★ 自動保存キー（※V13.4でも変更しない：既存の保存データを復元できなくなるため）
+        // ★ 自動保存キー（※V13.5でも変更しない：既存の保存データを復元できなくなるため）
         const STORAGE_KEY = "inspector_v12_state";
 
         let staffId, shopId;
@@ -799,6 +799,17 @@
                     btn.classList.remove('torch-on');
                 }
             });
+        }
+
+        // ★ ライトを強制消灯（カメラ非表示・スキャン以外の画面で使用）
+        async function forceTorchOff() {
+            torchOn = false;
+            updateTorchButton();
+            try {
+                if (html5QrCode && html5QrCode.applyVideoConstraints) {
+                    await html5QrCode.applyVideoConstraints({ advanced: [{ torch: false }] });
+                }
+            } catch (e) {}
         }
 
         function isValidMachineId(value) {
@@ -1174,7 +1185,13 @@
             document.getElementById('btn-back').style.display = (currentStep > 1) ? 'block' : 'none';
 
             document.getElementById('rom-input-area').style.display = (currentStep === 3) ? 'block' : 'none';
-            document.getElementById('reader-container').style.display = (currentStep !== 3) ? 'block' : 'none';
+            const cameraVisible = (currentStep !== 3);
+            document.getElementById('reader-container').style.display = cameraVisible ? 'block' : 'none';
+
+            // ★ カメラ非表示（③ROM入力など）ではライトを強制消灯
+            if (!cameraVisible) {
+                forceTorchOff();
+            }
 
             const showNormalInput = (currentStep === 1 || currentStep === 2);
             document.getElementById('normal-input-area').style.display = showNormalInput ? 'block' : 'none';
