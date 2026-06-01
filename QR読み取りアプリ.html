@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V13.5</title>
+    <title>点検スキャナー V13.6</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -348,7 +348,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V13.5</div>
+        <div class="version-tag">V13.6</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -359,7 +359,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V13.5</div>
+            <div class="version-tag">V13.6</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -409,7 +409,7 @@
                         oninput="handleRom3Input()"
                     >
                 </div>
-                <button type="button" id="rom-kb-toggle" class="btn-secondary" style="margin-top:6px;" onclick="toggleRomKbMode()">⌨ 数字入力</button>
+                <button type="button" id="rom-kb-toggle" class="btn-secondary" style="margin-top:6px;" onmousedown="event.preventDefault();" onclick="toggleRomKbMode()">⌨ 数字入力</button>
                 <button id="btn-rom-confirm" class="btn-primary" onclick="handleManualInput()">ROM確定</button>
                 <button class="btn-secondary" onclick="skipRomInput()">ROM入力スキップ</button>
             </div>
@@ -451,7 +451,7 @@
 
         const MAIL_TO = "rom_receive@bishop777.com";
 
-        // ★ 自動保存キー（※V13.5でも変更しない：既存の保存データを復元できなくなるため）
+        // ★ 自動保存キー（※V13.6でも変更しない：既存の保存データを復元できなくなるため）
         const STORAGE_KEY = "inspector_v12_state";
 
         let staffId, shopId;
@@ -464,7 +464,8 @@
         let prevRom3 = "";
         let toastTimer = null;
         let audioContext = null;
-        let torchOn = false;
+        let torchOn = false;       // 実際のLED状態
+        let torchDesired = false;  // ★ ユーザーが点けたい状態（カメラ復帰時に復元）
 
         // ========================================
         // ★ 自動保存・復元処理
@@ -731,6 +732,7 @@
             }
 
             torchOn = false;
+            torchDesired = false; // ★ カメラ再起動時は意図もリセット
             updateTorchButton();
             getTorchButtons().forEach(b => b.style.display = 'none');
 
@@ -783,6 +785,7 @@
                     advanced: [{ torch: newState }]
                 });
                 torchOn = newState;
+                torchDesired = newState; // ★ ユーザーの意図として記録
                 updateTorchButton();
             } catch (e) {
                 console.error("ライト切替失敗", e);
@@ -801,13 +804,29 @@
             });
         }
 
-        // ★ ライトを強制消灯（カメラ非表示・スキャン以外の画面で使用）
+        // ★ ライトを物理的に消灯（意図torchDesiredは保持＝カメラ復帰時に戻す）
         async function forceTorchOff() {
             torchOn = false;
             updateTorchButton();
             try {
                 if (html5QrCode && html5QrCode.applyVideoConstraints) {
                     await html5QrCode.applyVideoConstraints({ advanced: [{ torch: false }] });
+                }
+            } catch (e) {}
+        }
+
+        // ★ カメラ復帰時、点灯の意図があれば再点灯（点灯状況の保持）
+        async function restoreTorchIfDesired() {
+            if (!torchDesired) {
+                torchOn = false;
+                updateTorchButton();
+                return;
+            }
+            try {
+                if (html5QrCode && html5QrCode.applyVideoConstraints) {
+                    await html5QrCode.applyVideoConstraints({ advanced: [{ torch: true }] });
+                    torchOn = true;
+                    updateTorchButton();
                 }
             } catch (e) {}
         }
@@ -949,19 +968,18 @@
         function toggleRomKbMode() {
             setRomKbMode(getRomKbMode() === "numeric" ? "voice" : "numeric");
 
-            // キーボードを切り替えるため、一度blurして再フォーカス
+            // ★ inputmode変更を反映しつつキーボードを出したままにする。
+            //    ボタンはonmousedownでフォーカスを奪わないため、ここで同期的に
+            //    blur→focusすると（ユーザー操作内なので）キーボードが再表示される。
             const rom1 = document.getElementById('rom-1');
             if (rom1) {
                 rom1.blur();
-                setTimeout(() => {
-                    try {
-                        rom1.focus({ preventScroll: true });
-                    } catch (e) {
-                        rom1.focus();
-                    }
-                    rom1.click();
-                    rom1.select();
-                }, 60);
+                try {
+                    rom1.focus({ preventScroll: true });
+                } catch (e) {
+                    rom1.focus();
+                }
+                try { rom1.select(); } catch (e) {}
             }
         }
 
@@ -1188,9 +1206,11 @@
             const cameraVisible = (currentStep !== 3);
             document.getElementById('reader-container').style.display = cameraVisible ? 'block' : 'none';
 
-            // ★ カメラ非表示（③ROM入力など）ではライトを強制消灯
+            // ★ カメラ表示中は点灯意図を復元（点灯状況の保持）、非表示時は消灯
             if (!cameraVisible) {
                 forceTorchOff();
+            } else {
+                restoreTorchIfDesired();
             }
 
             const showNormalInput = (currentStep === 1 || currentStep === 2);
