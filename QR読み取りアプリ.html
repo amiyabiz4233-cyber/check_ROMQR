@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V13.8</title>
+    <title>点検スキャナー V14.0</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -348,7 +348,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V13.8</div>
+        <div class="version-tag">V14.0</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -359,7 +359,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V13.8</div>
+            <div class="version-tag">V14.0</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -376,7 +376,7 @@
             </div>
 
             <div id="normal-input-area" style="margin-top:10px;">
-                <input type="number" inputmode="numeric" id="manual-input" placeholder="台番手入力">
+                <input type="text" inputmode="numeric" id="manual-input" placeholder="台番手入力">
                 <button class="btn-primary" onclick="handleManualInput()">確定</button>
             </div>
 
@@ -451,7 +451,7 @@
 
         const MAIL_TO = "rom_receive@bishop777.com";
 
-        // ★ 自動保存キー（※V13.8でも変更しない：既存の保存データを復元できなくなるため）
+        // ★ 自動保存キー（※V14.0でも変更しない：既存の保存データを復元できなくなるため）
         const STORAGE_KEY = "inspector_v12_state";
 
         let staffId, shopId;
@@ -853,7 +853,7 @@
         // ========================================
         const MAINBOARD_ROM_TYPE_MAP = [
             ["SY", "EAI"], ["ST", "EAI"], ["BB", "EAI"], ["NS", "EAI"], ["AA", "EAI"],
-            [" /", "KY"],  ["JB", "KY"],  ["MZ", "KY"],  ["DA", "KY"],  ["TU", "KY"],
+            ["/", "KY"],  // ★ V14.0: QRに「/」が含まれていればKY  ["JB", "KY"],  ["MZ", "KY"],  ["DA", "KY"],  ["TU", "KY"],
             ["GZ", "KY"],  ["WW", "KY"],  ["DT", "KY"],  ["SS", "KY"],  ["AM", "KY"],
             ["CC", "KY"],  ["SA", "KY"],  ["TO", "KY"],  ["HC", "KY"],  ["TA", "KY"],
             ["MH", "KY"],  ["EX", "EAI"], ["DL", "EAI"], ["FJ", "EAI"], ["RG", "EAI"],
@@ -941,11 +941,16 @@
             if (next === "EAI") {
                 if (rom3) rom3.value = "";
 
-                if (currentStep === 3) {
-                    const rom1 = document.getElementById('rom-1');
-                    if (rom1 && rom1.value.trim().length === 4) {
-                        setTimeout(() => handleManualInput(), 120);
-                    }
+                // ★ V14.0: ROM①が4桁なら自動確定（旧動作を復活）
+                //    4桁でなければROM①へフォーカスし、テンキーを自動表示（V13.9動作）
+                const rom1 = document.getElementById('rom-1');
+                const r1 = rom1 ? (rom1.value || "").trim() : "";
+
+                if (currentStep === 3 && r1.length === 4) {
+                    setTimeout(() => handleManualInput(), 120);
+                } else {
+                    setRomKbMode("numeric");
+                    setTimeout(() => focusRomInput(), 60);
                 }
             } else if (next === "KY") {
                 // ★ KYに切り替えたらROM①へカーソル移動＋既存値を全選択
@@ -1249,6 +1254,19 @@
             const showNormalInput = (currentStep === 1 || currentStep === 2);
             document.getElementById('normal-input-area').style.display = showNormalInput ? 'block' : 'none';
 
+            // ★ V13.9: 手入力欄のキーボード切替
+            //    ①台番=テンキー / ②主基板=通常キーボード（英数字・記号も入力可）
+            const manualInput = document.getElementById('manual-input');
+            if (manualInput) {
+                if (currentStep === 2) {
+                    manualInput.setAttribute('inputmode', 'text');
+                    manualInput.placeholder = "主基板手入力（英数字可）";
+                } else {
+                    manualInput.setAttribute('inputmode', 'numeric');
+                    manualInput.placeholder = "台番手入力";
+                }
+            }
+
             const titles = ["", "① 台番号スキャン", "② 主基板スキャン", "③ ROM入力", "④ 封印スキャン"];
             document.getElementById('status').innerText = titles[currentStep];
 
@@ -1270,13 +1288,16 @@
                 const r2 = getRomType();
                 let r3 = sanitizeRomDigits(document.getElementById('rom-3'));
 
-                if (!r1) {
-                    alert("メーカー番号を入力してください");
+                // ★ V13.9: ROM①は4桁必須
+                if (r1.length !== 4) {
+                    alert(`⚠ ROM①が4桁ではありません（現在${r1.length}桁）\n4桁の数字を入力してください`);
                     focusRomInput();
                     return;
                 }
 
-                if (r2 === "KY" && !r3) {
+                // ★ V13.9: KYの場合、ROM③は3桁必須
+                if (r2 === "KY" && r3.length !== 3) {
+                    alert(`⚠ ROM③が3桁ではありません（現在${r3.length}桁）\n3桁の数字を入力してください`);
                     focusRom3WithKeyboard();
                     return;
                 }
