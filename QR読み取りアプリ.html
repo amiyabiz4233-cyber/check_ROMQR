@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V13.7</title>
+    <title>点検スキャナー V13.8</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -348,7 +348,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V13.7</div>
+        <div class="version-tag">V13.8</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -359,7 +359,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V13.7</div>
+            <div class="version-tag">V13.8</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -451,7 +451,7 @@
 
         const MAIL_TO = "rom_receive@bishop777.com";
 
-        // ★ 自動保存キー（※V13.7でも変更しない：既存の保存データを復元できなくなるため）
+        // ★ 自動保存キー（※V13.8でも変更しない：既存の保存データを復元できなくなるため）
         const STORAGE_KEY = "inspector_v12_state";
 
         let staffId, shopId;
@@ -845,6 +845,38 @@
             return typeof value === "string" && /^BISHOP/i.test(value);
         }
 
+        // ========================================
+        // ★ V13.8: 主基板QR → ROMタイプ(KY/EAI)初期値の自動設定
+        //    「主基盤QRとKY_EAIの対照表.xlsx」準拠
+        //    判定: QR文字列内にコードが「含まれる」か（上から順に評価、最初の一致を採用）
+        //    一致なし（主基板スキップの"なし"含む）→ 前回値を維持
+        // ========================================
+        const MAINBOARD_ROM_TYPE_MAP = [
+            ["SY", "EAI"], ["ST", "EAI"], ["BB", "EAI"], ["NS", "EAI"], ["AA", "EAI"],
+            [" /", "KY"],  ["JB", "KY"],  ["MZ", "KY"],  ["DA", "KY"],  ["TU", "KY"],
+            ["GZ", "KY"],  ["WW", "KY"],  ["DT", "KY"],  ["SS", "KY"],  ["AM", "KY"],
+            ["CC", "KY"],  ["SA", "KY"],  ["TO", "KY"],  ["HC", "KY"],  ["TA", "KY"],
+            ["MH", "KY"],  ["EX", "EAI"], ["DL", "EAI"], ["FJ", "EAI"], ["RG", "EAI"],
+            ["JJ", "KY"],  ["DS", "EAI"]
+        ];
+
+        function applyRomTypeFromMainBoard(qrText) {
+            if (typeof qrText !== "string" || !qrText) return;
+
+            for (const [code, type] of MAINBOARD_ROM_TYPE_MAP) {
+                if (qrText.includes(code)) {
+                    setRomType(type);
+                    if (type === "EAI") {
+                        // EAI はROM③を使わないためクリア（既存toggleRomTypeと同じ挙動）
+                        const rom3 = document.getElementById('rom-3');
+                        if (rom3) rom3.value = "";
+                    }
+                    return;
+                }
+            }
+            // 一致なし → 前回値を維持（何もしない）
+        }
+
         function isSuspiciousMainBoardValue(value) {
             return typeof value === "string" && /^\d{6}$/.test(value);
         }
@@ -1146,6 +1178,7 @@
 
             if (currentStep === 2) {
                 currentData.mainBoardId = pendingValue;
+                applyRomTypeFromMainBoard(pendingValue); // ★ V13.8: KY/EAI初期値を自動設定
                 currentStep = 3;
                 updateUI();
                 focusRomInput();
