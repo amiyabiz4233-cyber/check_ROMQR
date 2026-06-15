@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V14.0</title>
+    <title>点検スキャナー V14.1</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -348,7 +348,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V14.0</div>
+        <div class="version-tag">V14.1</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -359,7 +359,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V14.0</div>
+            <div class="version-tag">V14.1</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -848,10 +848,17 @@
         // ========================================
         // ★ V13.8: 主基板QR → ROMタイプ(KY/EAI)初期値の自動設定
         //    「主基盤QRとKY_EAIの対照表.xlsx」準拠
-        //    判定: QR文字列内にコードが「含まれる」か（上から順に評価、最初の一致を採用）
+        //    判定: QR文字列内にコードが「含まれる」か（最初の一致を採用）
         //    一致なし（主基板スキップの"なし"含む）→ 前回値を維持
+        // ★ V14.1: 4文字コード（P2始まり）を最優先で整合。
+        //          対象外（4文字一致なし）の場合のみ2文字コードで整合する2段階方式。
         // ========================================
-        const MAINBOARD_ROM_TYPE_MAP = [
+        // 4文字コード（最優先）
+        const MAINBOARD_ROM_TYPE_MAP_4 = [
+            ["P2TO", "KY"], ["P2SY", "EAI"]
+        ];
+        // 2文字コード（4文字で対象外だった場合のフォールバック）
+        const MAINBOARD_ROM_TYPE_MAP_2 = [
             ["SY", "EAI"], ["ST", "EAI"], ["BB", "EAI"], ["NS", "EAI"], ["AA", "EAI"],
             ["/", "KY"],  // ★ V14.0: QRに「/」が含まれていればKY  ["JB", "KY"],  ["MZ", "KY"],  ["DA", "KY"],  ["TU", "KY"],
             ["GZ", "KY"],  ["WW", "KY"],  ["DT", "KY"],  ["SS", "KY"],  ["AM", "KY"],
@@ -863,7 +870,9 @@
         function applyRomTypeFromMainBoard(qrText) {
             if (typeof qrText !== "string" || !qrText) return;
 
-            for (const [code, type] of MAINBOARD_ROM_TYPE_MAP) {
+            // ① まず4文字コードで整合（最優先）
+            // ② 4文字で対象外なら2文字コードで整合（フォールバック）
+            for (const [code, type] of [...MAINBOARD_ROM_TYPE_MAP_4, ...MAINBOARD_ROM_TYPE_MAP_2]) {
                 if (qrText.includes(code)) {
                     setRomType(type);
                     if (type === "EAI") {
