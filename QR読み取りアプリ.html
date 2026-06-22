@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V14.1</title>
+    <title>点検スキャナー V14.2</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -348,7 +348,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V14.1</div>
+        <div class="version-tag">V14.2</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -359,7 +359,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V14.1</div>
+            <div class="version-tag">V14.2</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -849,41 +849,73 @@
         // ★ V13.8: 主基板QR → ROMタイプ(KY/EAI)初期値の自動設定
         //    「主基盤QRとKY_EAIの対照表.xlsx」準拠
         //    判定: QR文字列内にコードが「含まれる」か（最初の一致を採用）
-        //    一致なし（主基板スキップの"なし"含む）→ 前回値を維持
         // ★ V14.1: 4文字コード（P2始まり）を最優先で整合。
         //          対象外（4文字一致なし）の場合のみ2文字コードで整合する2段階方式。
+        // ★ V14.2: 「/」を含むQRは「/」より前の文字列から [英字+数字2桁] コードを
+        //          抽出して判定（旧V14.0の「/が含まれたら一律KY」は廃止）。
+        //          スラッシュ用マップは「今までの主基板QRとROMの履歴.xlsx」2,647件から導出。
+        //          どのコードにも合致しない場合 → 一個前のROMタイプ(英字)を維持。
+        //          初回(前回不明)はKYを既定とする。
         // ========================================
-        // 4文字コード（最優先）
+        // 4文字コード（最優先・「/」なしQR用）
         const MAINBOARD_ROM_TYPE_MAP_4 = [
             ["P2TO", "KY"], ["P2SY", "EAI"]
         ];
-        // 2文字コード（4文字で対象外だった場合のフォールバック）
+        // 2文字コード（「/」なしQR・4文字で対象外だった場合のフォールバック）
         const MAINBOARD_ROM_TYPE_MAP_2 = [
             ["SY", "EAI"], ["ST", "EAI"], ["BB", "EAI"], ["NS", "EAI"], ["AA", "EAI"],
-            ["/", "KY"],  // ★ V14.0: QRに「/」が含まれていればKY  ["JB", "KY"],  ["MZ", "KY"],  ["DA", "KY"],  ["TU", "KY"],
+            ["EX", "EAI"], ["DL", "EAI"], ["FJ", "EAI"], ["RG", "EAI"], ["DS", "EAI"],
             ["GZ", "KY"],  ["WW", "KY"],  ["DT", "KY"],  ["SS", "KY"],  ["AM", "KY"],
             ["CC", "KY"],  ["SA", "KY"],  ["TO", "KY"],  ["HC", "KY"],  ["TA", "KY"],
-            ["MH", "KY"],  ["EX", "EAI"], ["DL", "EAI"], ["FJ", "EAI"], ["RG", "EAI"],
-            ["JJ", "KY"],  ["DS", "EAI"]
+            ["MH", "KY"],  ["JJ", "KY"],  ["JB", "KY"],  ["MZ", "KY"],  ["DA", "KY"],
+            ["TU", "KY"]
         ];
+        // ★ V14.2: 「/」付きQR用 … /前の [英字+数字2桁] コード → ROMタイプ
+        //          （履歴2,647件からの集計：EAIは F50 / P51 / P52、他はKY）
+        const MAINBOARD_ROM_TYPE_MAP_SLASH = {
+            "F50": "EAI", "P51": "EAI", "P52": "EAI",
+            "A50": "KY", "B50": "KY", "B51": "KY", "C51": "KY", "D50": "KY",
+            "E52": "KY", "E53": "KY", "E54": "KY", "G50": "KY", "H50": "KY",
+            "J50": "KY", "K50": "KY", "K55": "KY", "K56": "KY", "L50": "KY",
+            "M50": "KY", "N51": "KY", "O50": "KY", "O54": "KY", "P50": "KY",
+            "Q50": "KY", "R50": "KY", "S55": "KY", "S56": "KY", "S57": "KY",
+            "U50": "KY", "W50": "KY", "W51": "KY", "X50": "KY", "X51": "KY",
+            "Y24": "KY", "Y52": "KY", "Y53": "KY"
+        };
+
+        // ROMタイプを設定し、EAIならROM③をクリア（既存toggleRomTypeと同じ挙動）
+        function setRomTypeWithRom3(type) {
+            setRomType(type);
+            if (type === "EAI") {
+                const rom3 = document.getElementById('rom-3');
+                if (rom3) rom3.value = "";
+            }
+        }
 
         function applyRomTypeFromMainBoard(qrText) {
             if (typeof qrText !== "string" || !qrText) return;
 
-            // ① まず4文字コードで整合（最優先）
-            // ② 4文字で対象外なら2文字コードで整合（フォールバック）
+            // ★ V14.2: 「/」を含む場合は「/」より前から [英字+数字2桁] コードを抽出して判定
+            if (qrText.includes("/")) {
+                const before = qrText.split("/")[0];
+                const m = before.match(/[A-Za-z]\d{2}/);
+                const code = m ? m[0].toUpperCase() : "";
+                const type = MAINBOARD_ROM_TYPE_MAP_SLASH[code];
+                if (type) {
+                    setRomTypeWithRom3(type);
+                    return;
+                }
+                setRomTypeWithRom3(getRomType() || "KY");
+                return;
+            }
+
             for (const [code, type] of [...MAINBOARD_ROM_TYPE_MAP_4, ...MAINBOARD_ROM_TYPE_MAP_2]) {
-                if (qrText.includes(code)) {
-                    setRomType(type);
-                    if (type === "EAI") {
-                        // EAI はROM③を使わないためクリア（既存toggleRomTypeと同じ挙動）
-                        const rom3 = document.getElementById('rom-3');
-                        if (rom3) rom3.value = "";
-                    }
+                if (code && qrText.includes(code)) {
+                    setRomTypeWithRom3(type);
                     return;
                 }
             }
-            // 一致なし → 前回値を維持（何もしない）
+            setRomTypeWithRom3(getRomType() || "KY");
         }
 
         function isSuspiciousMainBoardValue(value) {
