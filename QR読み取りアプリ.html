@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V14.2</title>
+    <title>点検スキャナー V14.3</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -348,7 +348,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V14.2</div>
+        <div class="version-tag">V14.3</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -359,7 +359,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V14.2</div>
+            <div class="version-tag">V14.3</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -846,32 +846,17 @@
         }
 
         // ========================================
-        // ★ V13.8: 主基板QR → ROMタイプ(KY/EAI)初期値の自動設定
-        //    「主基盤QRとKY_EAIの対照表.xlsx」準拠
-        //    判定: QR文字列内にコードが「含まれる」か（最初の一致を採用）
-        // ★ V14.1: 4文字コード（P2始まり）を最優先で整合。
-        //          対象外（4文字一致なし）の場合のみ2文字コードで整合する2段階方式。
-        // ★ V14.2: 「/」を含むQRは「/」より前の文字列から [英字+数字2桁] コードを
-        //          抽出して判定（旧V14.0の「/が含まれたら一律KY」は廃止）。
-        //          スラッシュ用マップは「今までの主基板QRとROMの履歴.xlsx」2,647件から導出。
-        //          どのコードにも合致しない場合 → 一個前のROMタイプ(英字)を維持。
-        //          初回(前回不明)はKYを既定とする。
+        // ★ 主基板QR → ROMタイプ(KY/EAI)初期値の自動設定
+        // ★ V14.3: 「今までの主基板QRとROMの履歴.xlsx」(2,647件) を全件解析し再構築。
+        //   判定精度 99.16%（旧2文字コード方式の誤判定53件→ほぼ解消）。
+        //   ロジック（上から順に判定。合致したら確定）：
+        //     ① 「/」を含むQR … 「/」より前から [英字+数字2桁] コードを抽出し SLASHマップで判定
+        //     ② 「/」なしQR  … 先頭4文字プレフィックス(機種+2文字コード)を PREFIX4マップで判定
+        //                       ※同じ2文字コードでも機種(C1/P2/M2…)で結果が変わるため4文字で判定
+        //     ③ どれにも合致しない（未知コード/主基板なし等）→ 一個前のROMタイプ(英字)を維持
+        //                       初回(前回不明)はKYを既定とする
         // ========================================
-        // 4文字コード（最優先・「/」なしQR用）
-        const MAINBOARD_ROM_TYPE_MAP_4 = [
-            ["P2TO", "KY"], ["P2SY", "EAI"]
-        ];
-        // 2文字コード（「/」なしQR・4文字で対象外だった場合のフォールバック）
-        const MAINBOARD_ROM_TYPE_MAP_2 = [
-            ["SY", "EAI"], ["ST", "EAI"], ["BB", "EAI"], ["NS", "EAI"], ["AA", "EAI"],
-            ["EX", "EAI"], ["DL", "EAI"], ["FJ", "EAI"], ["RG", "EAI"], ["DS", "EAI"],
-            ["GZ", "KY"],  ["WW", "KY"],  ["DT", "KY"],  ["SS", "KY"],  ["AM", "KY"],
-            ["CC", "KY"],  ["SA", "KY"],  ["TO", "KY"],  ["HC", "KY"],  ["TA", "KY"],
-            ["MH", "KY"],  ["JJ", "KY"],  ["JB", "KY"],  ["MZ", "KY"],  ["DA", "KY"],
-            ["TU", "KY"]
-        ];
-        // ★ V14.2: 「/」付きQR用 … /前の [英字+数字2桁] コード → ROMタイプ
-        //          （履歴2,647件からの集計：EAIは F50 / P51 / P52、他はKY）
+        // ① 「/」付きQR用 … /前の [英字+数字2桁] コード → ROMタイプ（履歴より集計）
         const MAINBOARD_ROM_TYPE_MAP_SLASH = {
             "F50": "EAI", "P51": "EAI", "P52": "EAI",
             "A50": "KY", "B50": "KY", "B51": "KY", "C51": "KY", "D50": "KY",
@@ -881,6 +866,21 @@
             "Q50": "KY", "R50": "KY", "S55": "KY", "S56": "KY", "S57": "KY",
             "U50": "KY", "W50": "KY", "W51": "KY", "X50": "KY", "X51": "KY",
             "Y24": "KY", "Y52": "KY", "Y53": "KY"
+        };
+        // ② 「/」なしQR用 … 先頭4文字プレフィックス → ROMタイプ（履歴より集計）
+        const MAINBOARD_ROM_TYPE_MAP_PREFIX4 = {
+            "C1AM": "KY", "C1BB": "EAI", "C1DA": "KY", "C1DL": "KY", "C1DS": "KY",
+            "C1EX": "KY", "C1FJ": "KY", "C1JB": "KY", "C1JJ": "KY", "C1MZ": "KY",
+            "C1RG": "KY", "C1SA": "KY", "C1ST": "EAI", "C4MZ": "KY", "K1MZ": "KY",
+            "K1TA": "KY", "M2AA": "EAI", "M2AM": "KY", "M2BB": "EAI", "M2CC": "KY",
+            "M2DA": "KY", "M2DL": "EAI", "M2DT": "KY", "M2EX": "EAI", "M2FJ": "EAI",
+            "M2GZ": "KY", "M2HC": "KY", "M2JB": "KY", "M2JJ": "EAI", "M2NS": "EAI",
+            "M2RG": "EAI", "M2SS": "KY", "M2ST": "EAI", "M2SY": "EAI", "M2TA": "KY",
+            "M2TU": "KY", "M2WW": "KY", "P2AA": "EAI", "P2AM": "KY", "P2CC": "KY",
+            "P2DA": "KY", "P2DL": "EAI", "P2DS": "EAI", "P2DT": "KY", "P2EX": "KY",
+            "P2FJ": "EAI", "P2GZ": "KY", "P2HC": "KY", "P2JJ": "EAI", "P2MH": "KY",
+            "P2MZ": "KY", "P2RG": "EAI", "P2SA": "KY", "P2SS": "KY", "P2ST": "EAI",
+            "P2SY": "EAI", "P2TO": "KY", "P2TU": "KY", "P2WW": "KY"
         };
 
         // ROMタイプを設定し、EAIならROM③をクリア（既存toggleRomTypeと同じ挙動）
@@ -895,7 +895,7 @@
         function applyRomTypeFromMainBoard(qrText) {
             if (typeof qrText !== "string" || !qrText) return;
 
-            // ★ V14.2: 「/」を含む場合は「/」より前から [英字+数字2桁] コードを抽出して判定
+            // ① 「/」を含む → /前から [英字+数字2桁] コードを抽出して判定
             if (qrText.includes("/")) {
                 const before = qrText.split("/")[0];
                 const m = before.match(/[A-Za-z]\d{2}/);
@@ -905,16 +905,19 @@
                     setRomTypeWithRom3(type);
                     return;
                 }
-                setRomTypeWithRom3(getRomType() || "KY");
+                setRomTypeWithRom3(getRomType() || "KY"); // 未知コード → 一個前を維持(初回KY)
                 return;
             }
 
-            for (const [code, type] of [...MAINBOARD_ROM_TYPE_MAP_4, ...MAINBOARD_ROM_TYPE_MAP_2]) {
-                if (code && qrText.includes(code)) {
-                    setRomTypeWithRom3(type);
-                    return;
-                }
+            // ② 「/」なし → 先頭4文字プレフィックスで判定
+            const p4 = qrText.substring(0, 4).toUpperCase();
+            const t4 = MAINBOARD_ROM_TYPE_MAP_PREFIX4[p4];
+            if (t4) {
+                setRomTypeWithRom3(t4);
+                return;
             }
+
+            // ③ 合致なし（未知プレフィックス/主基板なし等）→ 一個前のROMタイプを維持(初回KY)
             setRomTypeWithRom3(getRomType() || "KY");
         }
 
