@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V14.3</title>
+    <title>点検スキャナー V14.4</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -348,7 +348,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V14.3</div>
+        <div class="version-tag">V14.4</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -359,7 +359,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V14.3</div>
+            <div class="version-tag">V14.4</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -390,7 +390,7 @@
                         placeholder="数字/音声"
                         onclick="this.select();"
                         onblur="handleRom1Blur()"
-                        oninput="handleRom1Input()"
+                        oninput="handleRom1Input(event)"
                     >
                     <button
                         id="rom-select"
@@ -406,7 +406,7 @@
                         style="flex:1;"
                         placeholder="数字/音声(空欄可)"
                         onclick="this.select();"
-                        oninput="handleRom3Input()"
+                        oninput="handleRom3Input(event)"
                     >
                 </div>
                 <button type="button" id="rom-kb-toggle" class="btn-secondary" style="margin-top:6px;" onmousedown="event.preventDefault();" onclick="toggleRomKbMode()">⌨ 数字入力</button>
@@ -607,6 +607,7 @@
             handleRomTypeChange();
             updateAutosaveDisplay();
             applyRomKbMode(); // ★ 保存済みのROMキーボードモードを反映
+            setupRomVoiceGuards(); // ★ V14.4: 音声入力の変換中フラグ用リスナー登録
 
             // ★ 復元確認
             const saved = loadState();
@@ -1087,8 +1088,67 @@
             return v;
         }
 
-        function handleRom1Input() {
+        // ========================================
+        // ★ V14.4: 音声入力(ディクテーション)の文字重複バグ対策
+        //   症状: 「2456」と発音すると「242456」のように途中経過が二重に残る。
+        //   原因: 変換確定前(入力途中)に oninput で value を書き換える(sanitize)と、
+        //         iOSが途中経過＋確定文字を二重挿入してしまう。
+        //   対策: ① compositionstart～end の「変換中」は value を一切触らない／自動送りしない
+        //         ② 音声モードは入力が落ち着いてから(デバウンス)に正規化＋自動送りを実行
+        //         ③ 数字モードは従来どおり即時動作（入力速度を落とさない）
+        // ========================================
+        const romComposing = { 'rom-1': false, 'rom-3': false };
+        const romInputTimer = { 'rom-1': null, 'rom-3': null };
+        const ROM_VOICE_DEBOUNCE_MS = 600;
+
+        function isVoiceMode() {
+            return getRomKbMode() === "voice";
+        }
+
+        // ★ ROM①/③ に変換中フラグ用リスナーを登録（onloadで一度だけ呼ぶ）
+        function setupRomVoiceGuards() {
+            ['rom-1', 'rom-3'].forEach(id => {
+                const el = document.getElementById(id);
+                if (!el) return;
+
+                el.addEventListener('compositionstart', () => {
+                    romComposing[id] = true;
+                    clearTimeout(romInputTimer[id]);
+                });
+
+                el.addEventListener('compositionend', () => {
+                    romComposing[id] = false;
+                    // ★ 変換確定後にまとめて正規化＋自動送り（確定前は絶対に触らない）
+                    clearTimeout(romInputTimer[id]);
+                    romInputTimer[id] = setTimeout(() => {
+                        if (id === 'rom-1') runRom1AfterInput();
+                        else runRom3AfterInput();
+                    }, 80);
+                });
+            });
+        }
+
+        // ROM① 入力イベント（数字モード=即時 / 音声モード=デバウンス）
+        function handleRom1Input(ev) {
             if (currentStep !== 3) return;
+
+            // ★ 変換中(音声/IME)は一切触らない＝重複入力の根本原因を断つ
+            if (romComposing['rom-1'] || (ev && ev.isComposing)) return;
+
+            if (isVoiceMode()) {
+                // ★ 入力が落ち着くまで待ってから正規化＋自動送り（途中で value を書き換えない）
+                clearTimeout(romInputTimer['rom-1']);
+                romInputTimer['rom-1'] = setTimeout(runRom1AfterInput, ROM_VOICE_DEBOUNCE_MS);
+                return;
+            }
+
+            runRom1AfterInput();
+        }
+
+        // ROM①：正規化＋4桁で自動送り（変換確定後／デバウンス後に実行）
+        function runRom1AfterInput() {
+            if (currentStep !== 3) return;
+            if (romComposing['rom-1']) return; // まだ変換中なら何もしない
 
             const rom1 = document.getElementById('rom-1');
             if (!rom1) return;
@@ -1097,7 +1157,6 @@
             if (r1.length !== 4) return;
 
             const type = getRomType();
-
             if (type === "KY") {
                 setTimeout(() => focusRom3WithKeyboard(), 120);
             } else if (type === "EAI") {
@@ -1107,6 +1166,7 @@
 
         function handleRom1Blur() {
             if (currentStep !== 3) return;
+            if (romComposing['rom-1']) return; // ★ 変換中のblurでは触らない
 
             const rom1 = document.getElementById('rom-1');
             const rom3 = document.getElementById('rom-3');
@@ -1125,9 +1185,26 @@
             }, 100);
         }
 
-        function handleRom3Input() {
+        // ROM③ 入力イベント（数字モード=即時 / 音声モード=デバウンス）
+        function handleRom3Input(ev) {
+            if (currentStep !== 3) return;
+
+            if (romComposing['rom-3'] || (ev && ev.isComposing)) return;
+
+            if (isVoiceMode()) {
+                clearTimeout(romInputTimer['rom-3']);
+                romInputTimer['rom-3'] = setTimeout(runRom3AfterInput, ROM_VOICE_DEBOUNCE_MS);
+                return;
+            }
+
+            runRom3AfterInput();
+        }
+
+        // ROM③：KYのみ、ROM①4桁＋ROM③3桁で自動確定
+        function runRom3AfterInput() {
             if (currentStep !== 3) return;
             if (getRomType() !== "KY") return;
+            if (romComposing['rom-3']) return;
 
             const rom1 = document.getElementById('rom-1');
             const rom3 = document.getElementById('rom-3');
