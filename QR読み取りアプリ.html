@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V14.8</title>
+    <title>点検スキャナー V14.9</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -323,6 +323,50 @@
             font-weight: bold;
         }
 
+        /* ★ V14.9: 履歴行の長押し修正 */
+        #history-table tbody tr {
+            -webkit-touch-callout: none;  /* iOS長押しメニュー抑止 */
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        #history-table tbody tr.row-pressing {
+            background: #dbeafe;  /* 長押し中のハイライト */
+        }
+
+        #edit-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 10003;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #edit-modal {
+            background: #fff;
+            width: 90%;
+            max-width: 420px;
+            padding: 20px;
+            border-radius: 20px;
+            box-sizing: border-box;
+            text-align: left;
+            max-height: 82vh;
+            overflow-y: auto;
+            transform: translateY(-5vh);
+        }
+
+        #edit-modal label {
+            display: block;
+            font-size: 13px;
+            font-weight: bold;
+            color: #555;
+            margin-top: 12px;
+        }
+
         table {
             width: 100%;
             border-collapse: collapse;
@@ -399,10 +443,27 @@
         </div>
     </div>
 
+    <!-- ★ V14.9: 履歴の長押し修正モーダル -->
+    <div id="edit-overlay">
+        <div id="edit-modal">
+            <div style="font-weight:bold; font-size:18px; text-align:center;">📝 登録データの修正</div>
+            <label>台番</label>
+            <input type="text" inputmode="numeric" id="edit-machine">
+            <label>主基板</label>
+            <input type="text" id="edit-mainboard">
+            <label>ROM</label>
+            <input type="text" id="edit-rom">
+            <label>封印（複数は / 区切り）</label>
+            <input type="text" id="edit-seals">
+            <button class="btn-success" onclick="saveEdit()">保存</button>
+            <button class="btn-secondary" onclick="closeEdit()">キャンセル</button>
+        </div>
+    </div>
+
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V14.8</div>
+        <div class="version-tag">V14.9</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -413,7 +474,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V14.8</div>
+            <div class="version-tag">V14.9</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -609,18 +670,8 @@
             prevRom1 = saved.prevRom1 || "";
             prevRom3 = saved.prevRom3 || "";
 
-            // 履歴テーブル再描画（古い順で push → 表示は新しい順）
-            const tbody = document.getElementById('history-tbody');
-            tbody.innerHTML = "";
-            allData.forEach(d => {
-                const row = `<tr>
-                    <td>${d.machineId || ""}</td>
-                    <td>${d.mainBoardId || ""}</td>
-                    <td>${d.romId || ""}</td>
-                    <td>${d.sealsText || ""}</td>
-                </tr>`;
-                tbody.insertAdjacentHTML('afterbegin', row);
-            });
+            // 履歴テーブル再描画（★V14.9: renderHistoryTableに一元化）
+            renderHistoryTable();
 
             // 封印リスト再描画
             updateSealDisplay();
@@ -726,6 +777,7 @@
             updateAutosaveDisplay();
             applyRomKbMode(); // ★ 保存済みのROMキーボードモードを反映
             setupRomVoiceGuards(); // ★ V14.4: 音声入力の変換中フラグ用リスナー登録
+            setupHistoryLongPress(); // ★ V14.9: 履歴行の長押し修正リスナー登録
 
             // ★ 復元確認
             const saved = loadState();
@@ -1340,6 +1392,12 @@
         }
 
         function handleScannedText(value) {
+            // ★ V14.9: 修正モーダル表示中はスキャンを無視（背後での誤登録防止）
+            if (isEditOpen()) {
+                html5QrCode && html5QrCode.resume && html5QrCode.resume();
+                return;
+            }
+
             if (currentStep === 1) {
                 if (!isValidMachineId(value)) {
                     html5QrCode.resume();
@@ -1523,6 +1581,110 @@
             target.innerHTML = seals.map(s => `<span class="seal-tag">${s}</span>`).join('');
         }
 
+        // ========================================
+        // ★ V14.9: 履歴テーブルの長押し修正
+        //   ・描画をrenderHistoryTable()に一元化（data-indexでallDataと紐付け）
+        //   ・600ms長押しで修正モーダル（誤タップ防止: 指を動かす/途中で離すとキャンセル）
+        //   ・修正保存でallData更新→再描画→自動保存
+        // ========================================
+        function renderHistoryTable() {
+            const tbody = document.getElementById('history-tbody');
+            if (!tbody) return;
+            tbody.innerHTML = "";
+            // 新しい順に表示（allDataの後ろから）
+            for (let i = allData.length - 1; i >= 0; i--) {
+                const d = allData[i];
+                const tr = document.createElement('tr');
+                tr.dataset.index = i;
+                tr.innerHTML =
+                    `<td>${d.machineId || ""}</td>` +
+                    `<td>${d.mainBoardId || ""}</td>` +
+                    `<td>${d.romId || ""}</td>` +
+                    `<td>${d.sealsText || ""}</td>`;
+                tbody.appendChild(tr);
+            }
+        }
+
+        const LONG_PRESS_MS = 600;
+        let lpTimer = null;
+        let lpRow = null;
+
+        function lpCancel() {
+            clearTimeout(lpTimer);
+            lpTimer = null;
+            if (lpRow) lpRow.classList.remove('row-pressing');
+            lpRow = null;
+        }
+
+        function lpStart(e) {
+            const tr = e.target && e.target.closest ? e.target.closest('tr[data-index]') : null;
+            if (!tr) return;
+            lpCancel();
+            lpRow = tr;
+            tr.classList.add('row-pressing');
+            lpTimer = setTimeout(() => {
+                const idx = parseInt(tr.dataset.index, 10);
+                lpCancel();
+                openEdit(idx);
+            }, LONG_PRESS_MS);
+        }
+
+        function setupHistoryLongPress() {
+            const tbody = document.getElementById('history-tbody');
+            if (!tbody) return;
+            tbody.addEventListener('touchstart', lpStart, { passive: true });
+            tbody.addEventListener('touchmove', lpCancel, { passive: true });  // スクロール操作は修正扱いしない
+            tbody.addEventListener('touchend', lpCancel);
+            tbody.addEventListener('touchcancel', lpCancel);
+            // PC検証用（マウス）
+            tbody.addEventListener('mousedown', lpStart);
+            tbody.addEventListener('mouseup', lpCancel);
+            tbody.addEventListener('mouseleave', lpCancel);
+            tbody.addEventListener('contextmenu', e => e.preventDefault());
+        }
+
+        let editIndex = -1;
+
+        function isEditOpen() {
+            const el = document.getElementById('edit-overlay');
+            return !!el && el.style.display === 'flex';
+        }
+
+        function openEdit(idx) {
+            if (idx < 0 || idx >= allData.length) return;
+            editIndex = idx;
+            const d = allData[idx];
+            document.getElementById('edit-machine').value = d.machineId || "";
+            document.getElementById('edit-mainboard').value = d.mainBoardId || "";
+            document.getElementById('edit-rom').value = d.romId || "";
+            document.getElementById('edit-seals').value = d.sealsText || "";
+            document.getElementById('edit-overlay').style.display = 'flex';
+        }
+
+        function closeEdit() {
+            document.getElementById('edit-overlay').style.display = 'none';
+            editIndex = -1;
+        }
+
+        function saveEdit() {
+            if (editIndex < 0 || editIndex >= allData.length) {
+                closeEdit();
+                return;
+            }
+            const d = allData[editIndex];
+            d.machineId = document.getElementById('edit-machine').value.trim();
+            d.mainBoardId = document.getElementById('edit-mainboard').value.trim();
+            d.romId = document.getElementById('edit-rom').value.trim();
+            const sealsText = document.getElementById('edit-seals').value.trim();
+            // 封印はsealsTextとseals配列の両方を更新（CSV出力・復元との整合を維持）
+            d.seals = sealsText ? sealsText.split('/').map(s => s.trim()).filter(Boolean) : [];
+            d.sealsText = d.seals.join(' / ');
+            renderHistoryTable();
+            saveState();
+            closeEdit();
+            showScanToast("修正を保存しました");
+        }
+
         function handleManualInput() {
             if (currentStep === 3) {
                 const r1 = sanitizeRomDigits(document.getElementById('rom-1'));
@@ -1609,14 +1771,7 @@
                 time: new Date().toLocaleTimeString()
             });
 
-            const row = `<tr>
-                <td>${currentData.machineId || ""}</td>
-                <td>${currentData.mainBoardId || ""}</td>
-                <td>${currentData.romId || ""}</td>
-                <td>${sealsText}</td>
-            </tr>`;
-
-            document.getElementById('history-tbody').insertAdjacentHTML('afterbegin', row);
+            renderHistoryTable(); // ★V14.9: 一元化
 
             currentStep = 1;
             currentData = { seals: [] };
