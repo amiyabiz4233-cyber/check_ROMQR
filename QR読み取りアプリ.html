@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V14.4</title>
+    <title>点検スキャナー V14.8</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -256,6 +256,51 @@
             margin-bottom: 25px;
         }
 
+        /* ★ V14.8: 復元/初期化 選択モーダル（confirmのOK/キャンセル廃止） */
+        #resume-confirm-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 10002;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #resume-confirm-modal {
+            background: #fff;
+            width: 90%;
+            max-width: 420px;
+            padding: 25px 20px;
+            border-radius: 20px;
+            text-align: center;
+            box-sizing: border-box;
+            transform: translateY(-8vh);
+        }
+
+        #resume-confirm-msg {
+            white-space: pre-line;
+            text-align: left;
+            font-size: 15px;
+            font-weight: bold;
+            line-height: 1.7;
+            margin-bottom: 20px;
+        }
+
+        /* 続きから＝大きい緑（安全側を押しやすく） / 初期化＝赤 */
+        #resume-confirm-modal .btn-success {
+            min-height: 100px;
+            font-size: 26px;
+        }
+        #resume-confirm-modal .btn-danger {
+            min-height: 60px;
+            font-size: 18px;
+            margin-top: 14px;
+        }
+
         #warning-msg {
             display: none;
             color: #fff;
@@ -345,10 +390,19 @@
         </div>
     </div>
 
+    <!-- ★ V14.8: 復元/初期化 選択モーダル -->
+    <div id="resume-confirm-overlay">
+        <div id="resume-confirm-modal">
+            <div id="resume-confirm-msg"></div>
+            <button class="btn-success" onclick="resumeConfirmChoice(false)">続きからはじめる</button>
+            <button class="btn-danger" onclick="resumeConfirmChoice(true)">初期化して最初から</button>
+        </div>
+    </div>
+
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V14.4</div>
+        <div class="version-tag">V14.8</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -359,7 +413,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V14.4</div>
+            <div class="version-tag">V14.8</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -586,10 +640,74 @@
             updateAutosaveDisplay();
         }
 
-        function manualClearState() {
-            if (!confirm("自動保存データを削除しますか？\n\n現在の作業中データもすべて消えます。\n（テーブル表示はそのまま残ります）")) return;
+        // ========================================
+        // ★ V14.8: 自動保存の確認をconfirm(OK/キャンセル)から専用ボタンモーダルに変更
+        //   「続きからはじめる」(緑・大) / 「初期化して最初から」(赤)
+        //   3画面（起動時復元/CSV保存後/手動削除）すべて同じモーダルを使用
+        // ========================================
+        let resumeInitAction = null;    // 「初期化して最初から」で実行
+        let resumeResumeAction = null;  // 「続きからはじめる」で実行
+
+        function showResumeConfirm(message, onInit, onResume) {
+            resumeInitAction = (typeof onInit === 'function') ? onInit : null;
+            resumeResumeAction = (typeof onResume === 'function') ? onResume : null;
+            document.getElementById('resume-confirm-msg').innerText = message;
+            document.getElementById('resume-confirm-overlay').style.display = 'flex';
+        }
+
+        function resumeConfirmChoice(isInit) {
+            document.getElementById('resume-confirm-overlay').style.display = 'none';
+            const action = isInit ? resumeInitAction : resumeResumeAction;
+            resumeInitAction = null;
+            resumeResumeAction = null;
+            if (typeof action === 'function') action();
+        }
+
+        // ========================================
+        // ★ V14.6: 自動保存の破棄→新規開始は必ず店舗選択画面から始める
+        //   対象: CSV保存後の「削除して新規開始」／手動削除ボタン
+        //   ・メモリ上のallData/currentDataも完全リセット（旧: localStorageのみ削除で
+        //     次のsaveState()により消したはずのデータが再保存されるバグがあった）
+        //   ・shopIdを引き継いだまま次店舗の点検を始めてしまう事故を防止
+        //   ・カメラ停止＆ライト状態リセット（店舗選択画面ではカメラ不要）
+        //   ・社員番号/店舗番号の入力欄は前回値を保持（同一店舗ならそのまま開始可）
+        // ========================================
+        async function resetToSetup() {
             clearState();
-            alert("自動保存データを削除しました。");
+            allData = [];
+            currentData = { seals: [] };
+            currentStep = 1;
+            prevRom1 = "";
+            prevRom3 = "";
+            document.getElementById('history-tbody').innerHTML = "";
+            document.getElementById('seal-list-display').innerHTML = "";
+            document.getElementById('manual-input').value = "";
+            document.getElementById('rom-1').value = "";
+            document.getElementById('rom-3').value = "";
+
+            try {
+                if (html5QrCode) await html5QrCode.stop();
+            } catch (e) {}
+            torchOn = false;
+            torchDesired = false;
+
+            document.getElementById('main-app').style.display = 'none';
+            document.getElementById('setup-screen').style.display = 'block';
+            scrollToTopInstant();
+            updateAutosaveDisplay();
+        }
+
+        function manualClearState() {
+            showResumeConfirm(
+                "自動保存データを初期化しますか？\n\n" +
+                "続きからはじめる = 何も変更しない\n" +
+                "初期化して最初から = 作業中データ・テーブルも消えて店舗選択画面へ",
+                () => {
+                    resetToSetup();
+                    alert("初期化しました。\n店舗選択画面から開始してください。");
+                },
+                null
+            );
         }
 
         // ========================================
@@ -617,17 +735,15 @@
                 const inProgress = (saved.currentData && saved.currentData.machineId)
                     ? `\n作業中: 台番${saved.currentData.machineId}` : "";
                 const msg =
-                    `未保存データが見つかりました。\n\n` +
+                    `自動保存データが見つかりました。\n\n` +
                     `保存日時: ${dt}\n` +
                     `完了済み: ${count}台${inProgress}\n` +
                     `社員: ${saved.staffId} / 店舗: ${saved.shopId}\n\n` +
-                    `OK = 復元して続きから\n` +
-                    `キャンセル = 新規開始（保存データは破棄）`;
-                if (confirm(msg)) {
-                    restoreState(saved);
-                } else {
-                    clearState();
-                }
+                    `「初期化して最初から」を選ぶと保存データは削除されます。`;
+                showResumeConfirm(msg,
+                    () => { clearState(); },              // 初期化して最初から
+                    () => { restoreState(saved); }        // 続きからはじめる
+                );
             }
         };
 
@@ -848,6 +964,10 @@
 
         // ========================================
         // ★ 主基板QR → ROMタイプ(KY/EAI)初期値の自動設定
+        // ★ V14.5: 履歴xlsx最新版(有効3,159件)で全件再検証。判定精度 99.27%。
+        //   新規プレフィックス C4JB(KY)・C4SA(KY)・M2EE(EAI) の3件を追加。
+        //   既存コードの多数決変更なし。誤スキャン由来の不正コード(9427等)は追加せず③フォールバックで処理。
+        //   残る誤差は F50/H50/P2EX 等、同一コードでKY/EAIが混在する機種のみ（多数決で確定済み）。
         // ★ V14.3: 「今までの主基板QRとROMの履歴.xlsx」(2,647件) を全件解析し再構築。
         //   判定精度 99.16%（旧2文字コード方式の誤判定53件→ほぼ解消）。
         //   ロジック（上から順に判定。合致したら確定）：
@@ -872,9 +992,9 @@
         const MAINBOARD_ROM_TYPE_MAP_PREFIX4 = {
             "C1AM": "KY", "C1BB": "EAI", "C1DA": "KY", "C1DL": "KY", "C1DS": "KY",
             "C1EX": "KY", "C1FJ": "KY", "C1JB": "KY", "C1JJ": "KY", "C1MZ": "KY",
-            "C1RG": "KY", "C1SA": "KY", "C1ST": "EAI", "C4MZ": "KY", "K1MZ": "KY",
+            "C1RG": "KY", "C1SA": "KY", "C1ST": "EAI", "C4JB": "KY", "C4MZ": "KY", "C4SA": "KY", "K1MZ": "KY",
             "K1TA": "KY", "M2AA": "EAI", "M2AM": "KY", "M2BB": "EAI", "M2CC": "KY",
-            "M2DA": "KY", "M2DL": "EAI", "M2DT": "KY", "M2EX": "EAI", "M2FJ": "EAI",
+            "M2DA": "KY", "M2DL": "EAI", "M2DT": "KY", "M2EE": "EAI", "M2EX": "EAI", "M2FJ": "EAI",
             "M2GZ": "KY", "M2HC": "KY", "M2JB": "KY", "M2JJ": "EAI", "M2NS": "EAI",
             "M2RG": "EAI", "M2SS": "KY", "M2ST": "EAI", "M2SY": "EAI", "M2TA": "KY",
             "M2TU": "KY", "M2WW": "KY", "P2AA": "EAI", "P2AM": "KY", "P2CC": "KY",
@@ -1579,15 +1699,13 @@
 
             // ★ CSV保存後に自動保存データの削除を確認
             setTimeout(() => {
-                if (confirm("CSVを保存しました。\n\n自動保存データを削除しますか？\n\nOK = 削除して新規開始\nキャンセル = 残す（再起動時に復元可能）")) {
-                    clearState();
-                    allData = [];
-                    currentData = { seals: [] };
-                    currentStep = 1;
-                    document.getElementById('history-tbody').innerHTML = "";
-                    document.getElementById('seal-list-display').innerHTML = "";
-                    updateUI();
-                }
+                showResumeConfirm(
+                    "CSVを保存しました。\n\n" +
+                    "続きからはじめる = データを残す（再起動時に復元可能）\n" +
+                    "初期化して最初から = 自動保存を削除して店舗選択画面へ",
+                    () => { resetToSetup(); },  // 初期化して最初から
+                    null                        // 続きからはじめる（何もしない）
+                );
             }, 1500);
         }
     </script>
