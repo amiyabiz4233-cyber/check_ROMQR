@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V15.0</title>
+    <title>点検スキャナー V15.1</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -463,7 +463,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V15.0</div>
+        <div class="version-tag">V15.1</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -474,7 +474,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V15.0</div>
+            <div class="version-tag">V15.1</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -715,13 +715,29 @@
         }
 
         // ========================================
+        // ★ V15.1: 初期設定画面の既定値
+        //   ・社員番号: 前回「点検開始」時の値をlocalStorageから自動入力（人は固定のため）
+        //   ・店舗番号: 毎回クリア（前店舗のまま開始する事故を防止）
+        // ========================================
+        const STAFF_ID_LS_KEY = "lastStaffIdV1";
+
+        function applySetupDefaults() {
+            try {
+                const last = localStorage.getItem(STAFF_ID_LS_KEY);
+                if (last) document.getElementById('staff-id').value = last;
+            } catch (e) {}
+            document.getElementById('shop-id').value = "";
+            document.getElementById('shop-name').innerText = "店舗を選択してください";
+        }
+
+        // ========================================
         // ★ V14.6: 自動保存の破棄→新規開始は必ず店舗選択画面から始める
         //   対象: CSV保存後の「削除して新規開始」／手動削除ボタン
         //   ・メモリ上のallData/currentDataも完全リセット（旧: localStorageのみ削除で
         //     次のsaveState()により消したはずのデータが再保存されるバグがあった）
         //   ・shopIdを引き継いだまま次店舗の点検を始めてしまう事故を防止
         //   ・カメラ停止＆ライト状態リセット（店舗選択画面ではカメラ不要）
-        //   ・社員番号/店舗番号の入力欄は前回値を保持（同一店舗ならそのまま開始可）
+        //   ・社員番号は前回値を自動入力、店舗番号は毎回クリア（★V15.1変更）
         // ========================================
         async function resetToSetup() {
             clearState();
@@ -744,6 +760,7 @@
 
             document.getElementById('main-app').style.display = 'none';
             document.getElementById('setup-screen').style.display = 'block';
+            applySetupDefaults(); // ★ V15.1: 社員番号=前回値 / 店舗番号=クリア
             scrollToTopInstant();
             updateAutosaveDisplay();
         }
@@ -778,6 +795,7 @@
             applyRomKbMode(); // ★ 保存済みのROMキーボードモードを反映
             setupRomVoiceGuards(); // ★ V14.4: 音声入力の変換中フラグ用リスナー登録
             setupHistoryLongPress(); // ★ V14.9: 履歴行の長押し修正リスナー登録
+            applySetupDefaults(); // ★ V15.1: 社員番号=前回値 / 店舗番号=クリア
 
             // ★ 復元確認
             const saved = loadState();
@@ -882,6 +900,8 @@
                 alert("社員番号と店舗番号を入力してください");
                 return;
             }
+
+            try { localStorage.setItem(STAFF_ID_LS_KEY, staffId); } catch (e) {} // ★ V15.1: 次回の自動入力用
 
             initAudio();
 
