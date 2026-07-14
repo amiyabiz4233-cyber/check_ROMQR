@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V15.3</title>
+    <title>点検スキャナー V15.4</title>
 
     <script src="https://unpkg.com/html5-qrcode"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
@@ -463,7 +463,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V15.3</div>
+        <div class="version-tag">V15.4</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -474,7 +474,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V15.3</div>
+            <div class="version-tag">V15.4</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -1123,7 +1123,7 @@
         //   ・自動入力後も③の確定操作は必須（ROM交換されていた場合の誤登録防止）
         // ========================================
         const ROM_HISTORY_LS_KEY = "mainboardRomHistoryV1";
-        // ★ V15.3: 直近の主基板QRで自動入力したROM値（ROM確定時に相違を警告するため保持）
+        // ★ V15.4: 直近の主基板QRで自動入力したROM値（ROM確定時に相違を警告するため保持）
         let autoFilledRom = null;
         const ROM_VALUE_PATTERN = /^(\d{4})(KY|EAI)(\d{3})?$/;
 
@@ -1137,7 +1137,7 @@
             }
         }
 
-        // ★ V15.3: QRキー正規化（前後空白除去＋大文字化）。辞書キーも大文字で焼き込み済み
+        // ★ V15.4: QRキー正規化（前後空白除去＋大文字化）。辞書キーも大文字で焼き込み済み
         function normalizeQrKey(qr) {
             return (typeof qr === "string") ? qr.trim().toUpperCase() : "";
         }
@@ -1162,12 +1162,32 @@
             return local[key] || local[mainBoardQr] || MAINBOARD_ROM_HISTORY[key] || null;
         }
 
+        // ★ V15.4: 過去取得済み自動入力時の見た目（赤文字＋入力欄の色）を一括切替
+        function setRomHistoryHighlight(on) {
+            const note = document.getElementById('rom-history-note');
+            if (note) note.style.display = on ? 'block' : 'none';
+            ['rom-1', 'rom-3'].forEach(function (id) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (on) {
+                    el.style.backgroundColor = '#fff0f0';
+                    el.style.borderColor = '#dc2626';
+                    el.style.borderWidth = '2px';
+                    el.style.borderStyle = 'solid';
+                } else {
+                    el.style.backgroundColor = '';
+                    el.style.borderColor = '';
+                    el.style.borderWidth = '';
+                    el.style.borderStyle = '';
+                }
+            });
+        }
+
         // 履歴ヒット時: KY/EAI切替＋ROM①③を自動入力してtrueを返す
         function applyRomFromHistory(mainBoardQr) {
-            // ★ V15.3: 毎回リセット（前の台の自動入力状態・赤文字を持ち越さない）
+            // ★ V15.4/V15.4: 毎回リセット（前の台の自動入力状態・赤文字・欄の色を持ち越さない）
             autoFilledRom = null;
-            const _note = document.getElementById('rom-history-note');
-            if (_note) _note.style.display = 'none';
+            setRomHistoryHighlight(false);
 
             const romValue = lookupRomHistory(mainBoardQr);
             if (!romValue) return false;
@@ -1186,9 +1206,10 @@
             if (rom1) rom1.value = r1;
             if (rom3) rom3.value = r3;
 
-            // ★ V15.3: 自動入力したROMを記憶＋赤文字を常時表示（POP消失対策）
+            // ★ V15.4: 自動入力したROMを記憶＋赤文字を常時表示（POP消失対策）
+            // ★ V15.4: 入力欄の背景・枠色も変更
             autoFilledRom = romValue;
-            if (_note) _note.style.display = 'block';
+            setRomHistoryHighlight(true);
 
             showScanToast("登録済み主基板：ROM自動入力（要確認）");
             return true;
@@ -1553,7 +1574,7 @@
 
             display.innerText = value;
 
-            // ★ V15.3: 既定メッセージ（6桁誤読）を退避し、カスタム文言を差し込めるように
+            // ★ V15.4: 既定メッセージ（6桁誤読）を退避し、カスタム文言を差し込めるように
             if (!warning.dataset.defaultHtml) warning.dataset.defaultHtml = warning.innerHTML;
             warning.innerHTML = warningMsg || warning.dataset.defaultHtml;
 
@@ -1822,7 +1843,7 @@
                 const romId = r1 + r2 + r3;
                 pendingValue = romId;
 
-                // ★ V15.3: 過去取得済みと違うROMが入力されたら赤警告で再確認
+                // ★ V15.4: 過去取得済みと違うROMが入力されたら赤警告で再確認
                 if (autoFilledRom && romId !== autoFilledRom) {
                     showConfirmation(
                         romId,
@@ -1862,9 +1883,9 @@
         function skipStep() {
             if (currentStep === 2) {
                 currentData.mainBoardId = "なし";
-                // ★ V15.3: 主基板なし → 自動入力状態・赤文字をクリア
+                // ★ V15.4/V15.4: 主基板なし → 自動入力状態・赤文字・欄の色をクリア
                 autoFilledRom = null;
-                { const _note = document.getElementById('rom-history-note'); if (_note) _note.style.display = 'none'; }
+                setRomHistoryHighlight(false);
                 currentStep = 3;
                 updateUI();
                 focusRomInput();
