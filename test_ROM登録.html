@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V15.9</title>
+    <title>点検スキャナー V16.0</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -315,6 +315,20 @@
         #resume-confirm-modal .btn-slack:active {
             background: #611f69;
         }
+        #resume-confirm-modal .btn-mail {
+            min-height: 100px;
+            font-size: 26px;
+            font-weight: bold;
+            color: #fff;
+            background: #1565C0;
+            border: none;
+            border-radius: 12px;
+            width: 100%;
+            margin-bottom: 18px;
+        }
+        #resume-confirm-modal .btn-mail:active {
+            background: #1976D2;
+        }
 
         #warning-msg {
             display: none;
@@ -454,6 +468,7 @@
         <div id="resume-confirm-modal">
             <div id="resume-confirm-msg"></div>
             <button id="resume-slack-btn" class="btn-slack" onclick="openSlackDM()" style="display:none;">📨 Slackで送信先を開く</button>
+            <button id="resume-mail-btn" class="btn-mail" onclick="openMailSend()" style="display:none;">✉️ メールで送信</button>
             <button class="btn-success" onclick="resumeConfirmChoice(false)">続きからはじめる</button>
             <button class="btn-danger" onclick="resumeConfirmChoice(true)">初期化して最初から</button>
         </div>
@@ -479,7 +494,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V15.9</div>
+        <div class="version-tag">V16.0</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -490,7 +505,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V15.9</div>
+            <div class="version-tag">V16.0</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -611,6 +626,20 @@
                     window.location.href = SLACK_DM_URL_WEB;
                 }
             }, 1500);
+        }
+
+        // ★ V16.0: メール送信（V15.4の従来動作を復活。Slackと選べるようボタン化）
+        //   直近保存したCSVのファイル名を本文に載せる（添付は手動）。
+        //   iOSでは mailto もユーザージェスチャ経由の方が確実なのでボタンタップで発火。
+        let lastSavedFileName = "";
+        function openMailSend() {
+            const subject = encodeURIComponent(`点検データ_${shopId}`);
+            const body = encodeURIComponent(
+                `点検データを送付します。\n\n` +
+                `保存ファイル名: ${lastSavedFileName}\n` +
+                `※保存されたCSVファイルを添付して送信してください。`
+            );
+            window.location.href = `mailto:${MAIL_TO}?subject=${subject}&body=${body}`;
         }
 
         // ★ 自動保存キー（※V14.0でも変更しない：既存の保存データを復元できなくなるため）
@@ -750,8 +779,9 @@
             resumeInitAction = (typeof onInit === 'function') ? onInit : null;
             resumeResumeAction = (typeof onResume === 'function') ? onResume : null;
             document.getElementById('resume-confirm-msg').innerText = message;
-            // ★ V15.9: CSV保存後のみ「Slackを開く」ボタンを表示
+            // ★ V15.9/V16.0: CSV保存後のみ「Slackを開く」「メールで送信」ボタンを表示
             document.getElementById('resume-slack-btn').style.display = showSlack ? 'block' : 'none';
+            document.getElementById('resume-mail-btn').style.display = showSlack ? 'block' : 'none';
             document.getElementById('resume-confirm-overlay').style.display = 'flex';
         }
 
@@ -2044,6 +2074,7 @@
 
             const { blob, fileName } = buildCsvBlobAndFileName();
             saveBlobAsFile(blob, fileName);
+            lastSavedFileName = fileName; // ★ V16.0: メール本文用に保持
 
             // ★ V15.6: メール送信は廃止しSlack送信に変更（メール処理は一旦コメントアウト）
             // const subject = encodeURIComponent(`点検データ_${shopId}`);
@@ -2061,7 +2092,7 @@
             //   送信後に「続き」または「初期化」を選べる。
             showResumeConfirm(
                 "CSVを保存しました。\n\n" +
-                "①「Slackで送信先を開く」→ 保存したCSVを添付して送信\n" +
+                "①「Slackで送信先を開く」または「メールで送信」→ 保存したCSVを添付して送信\n" +
                 "②送信後このアプリに戻り、下のいずれかを選択\n\n" +
                 "続きからはじめる = データを残す（再起動時に復元可能）\n" +
                 "初期化して最初から = 自動保存を削除して店舗選択画面へ",
