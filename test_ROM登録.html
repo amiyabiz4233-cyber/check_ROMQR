@@ -3,10 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V15.6</title>
+    <title>点検スキャナー V15.7</title>
 
-    <script src="https://unpkg.com/html5-qrcode"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
+    <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
+    <script async src="https://unpkg.com/html5-qrcode"></script>
+    <script async src="https://cdnjs.cloudflare.com/ajax/libs/encoding-japanese/2.1.0/encoding.min.js"></script>
 
     <style>
         :root {
@@ -463,7 +464,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V15.6</div>
+        <div class="version-tag">V15.7</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -474,7 +475,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V15.6</div>
+            <div class="version-tag">V15.7</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -787,7 +788,10 @@
         // ========================================
         // 既存処理（自動保存呼び出しを追加）
         // ========================================
-        window.onload = () => {
+        // ★ V15.7修正: window.onload だと外部CDN(html5-qrcode等)の読込完了を待つため、
+        //   CDNが遅い/ブロックされると店舗リスト描画・点検開始が動かなくなる。
+        //   DOMの解析完了(DOMContentLoaded)で初期化し、CDN非依存でトップ画面を表示する。
+        document.addEventListener('DOMContentLoaded', () => {
             const listGrid = document.getElementById('display-shop-list');
             Object.keys(shopList).sort().forEach(id => {
                 const item = document.createElement('div');
@@ -821,7 +825,7 @@
                     () => { restoreState(saved); }        // 続きからはじめる
                 );
             }
-        };
+        });
 
         function scrollToTopInstant() {
             window.scrollTo({ top: 0, behavior: 'auto' });
@@ -920,6 +924,18 @@
         }
 
         async function initScanner() {
+            // ★ V15.7修正: CDN(html5-qrcode)を async 読込にしたため、
+            //   点検開始が早すぎるとまだ未定義の可能性がある。読込完了まで最大5秒リトライ。
+            if (typeof Html5Qrcode === 'undefined') {
+                for (let i = 0; i < 25 && typeof Html5Qrcode === 'undefined'; i++) {
+                    await new Promise(r => setTimeout(r, 200));
+                }
+                if (typeof Html5Qrcode === 'undefined') {
+                    alert("カメラ機能の読み込みに失敗しました。\n通信環境を確認し、ページを再読み込みしてください。");
+                    return;
+                }
+            }
+
             if (html5QrCode) {
                 try {
                     await html5QrCode.stop();
@@ -1945,6 +1961,12 @@
         }
 
         function buildCsvBlobAndFileName() {
+            // ★ V15.7修正: encoding-japanese を async 読込にしたため未読込の可能性をガード
+            if (typeof Encoding === 'undefined') {
+                alert("文字コード変換ライブラリが未読み込みです。\n通信環境を確認し、ページを再読み込みしてください。");
+                throw new Error("Encoding library not loaded");
+            }
+
             let csvContent = "社員,店舗,時間,台番,主,ROM,封印\r\n";
 
             allData.forEach(d => {
@@ -2007,3 +2029,28 @@
                 );
             };
             const onVisible = () => {
+                if (document.visibilityState === "visible") {
+                    // Slackから戻ってきた直後に少し待ってから表示（描画安定のため）
+                    setTimeout(showResumeConfirmOnce, 300);
+                }
+            };
+            document.addEventListener("visibilitychange", onVisible);
+
+            // ★ V15.6: Slackアプリで指定DMグループを開く
+            setTimeout(() => {
+                window.location.href = SLACK_DM_URL;
+            }, 500);
+
+            // ★ メール送信（従来動作）は一旦コメントアウト
+            //   ※Slackから戻ってきたタイミングでメーラー起動していた処理
+            // setTimeout(() => {
+            //     window.location.href = `mailto:${MAIL_TO}?subject=${subject}&body=${body}`;
+            // }, 3000);
+
+            // ★ フォールバック: Slackへ遷移しなかった/戻りを検知できなかった場合でも
+            //   一定時間後に必ず確認ダイアログを出す（visibilitychangeが先に発火すれば無効）
+            setTimeout(showResumeConfirmOnce, 4000);
+        }
+    </script>
+</body>
+</html>
