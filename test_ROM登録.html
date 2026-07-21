@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V15.8</title>
+    <title>点検スキャナー V15.9</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -301,6 +301,20 @@
             font-size: 18px;
             margin-top: 14px;
         }
+        #resume-confirm-modal .btn-slack {
+            min-height: 100px;
+            font-size: 26px;
+            font-weight: bold;
+            color: #fff;
+            background: #4A154B;
+            border: none;
+            border-radius: 12px;
+            width: 100%;
+            margin-bottom: 18px;
+        }
+        #resume-confirm-modal .btn-slack:active {
+            background: #611f69;
+        }
 
         #warning-msg {
             display: none;
@@ -439,6 +453,7 @@
     <div id="resume-confirm-overlay">
         <div id="resume-confirm-modal">
             <div id="resume-confirm-msg"></div>
+            <button id="resume-slack-btn" class="btn-slack" onclick="openSlackDM()" style="display:none;">📨 Slackで送信先を開く</button>
             <button class="btn-success" onclick="resumeConfirmChoice(false)">続きからはじめる</button>
             <button class="btn-danger" onclick="resumeConfirmChoice(true)">初期化して最初から</button>
         </div>
@@ -464,7 +479,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V15.8</div>
+        <div class="version-tag">V15.9</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -475,7 +490,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V15.8</div>
+            <div class="version-tag">V15.9</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -571,9 +586,32 @@
         // ★ V15.6: CSV保存後に開くSlack DMグループ
         const SLACK_TEAM_ID = "T02F4QUA74M";
         const SLACK_CHANNEL_ID = "C0BJKLLQT1U";
-        // ★ V15.7修正: slack://channel はモバイルでidを無視し直前のDMを開くことがあるため、
-        //   公式推奨の app_redirect(https) に変更。指定チャンネルへ確実に遷移する。
-        const SLACK_DM_URL = `https://slack.com/app_redirect?team=${SLACK_TEAM_ID}&channel=${SLACK_CHANNEL_ID}`;
+        // ★ V15.9修正: 「Slackは開くが指定DMが選択されない」原因は、CSV保存直後に
+        //   ユーザー操作なし(location.href)で自動遷移していたため。iOSはユーザー
+        //   ジェスチャ無しの外部遷移でディープリンクのルーティングを落とし、
+        //   直前の会話が開いてしまう。
+        //   → 自動遷移をやめ「Slackを開く」ボタンのタップ(ジェスチャ)で発火する方式に変更。
+        //   タップ経由なら slack:// スキームでも指定Group DMへ確実に遷移する。
+        const SLACK_DM_URL_SCHEME = `slack://channel?team=${SLACK_TEAM_ID}&id=${SLACK_CHANNEL_ID}`;
+        const SLACK_DM_URL_WEB = `https://slack.com/app_redirect?team=${SLACK_TEAM_ID}&channel=${SLACK_CHANNEL_ID}`;
+        // Slackアプリへ切替できたか(=visibilityがhiddenになったか)を記録
+        let slackSwitched = false;
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'hidden') slackSwitched = true;
+        });
+        // ★ V15.9: 送信先Group DMを開く（必ずボタンのタップから呼ぶこと）
+        function openSlackDM() {
+            slackSwitched = false;
+            window.location.href = SLACK_DM_URL_SCHEME;
+            // アプリ未起動(=画面が見えたまま)の時だけ web(app_redirect) にフォールバック。
+            //   Slackへ切替できていれば slackSwitched=true となりフォールバックしない
+            //   （戻ってきた時に再度Slackが開く二重起動を防ぐ）。
+            setTimeout(() => {
+                if (!slackSwitched && document.visibilityState === 'visible') {
+                    window.location.href = SLACK_DM_URL_WEB;
+                }
+            }, 1500);
+        }
 
         // ★ 自動保存キー（※V14.0でも変更しない：既存の保存データを復元できなくなるため）
         const STORAGE_KEY = "inspector_v12_state";
@@ -708,10 +746,12 @@
         let resumeInitAction = null;    // 「初期化して最初から」で実行
         let resumeResumeAction = null;  // 「続きからはじめる」で実行
 
-        function showResumeConfirm(message, onInit, onResume) {
+        function showResumeConfirm(message, onInit, onResume, showSlack) {
             resumeInitAction = (typeof onInit === 'function') ? onInit : null;
             resumeResumeAction = (typeof onResume === 'function') ? onResume : null;
             document.getElementById('resume-confirm-msg').innerText = message;
+            // ★ V15.9: CSV保存後のみ「Slackを開く」ボタンを表示
+            document.getElementById('resume-slack-btn').style.display = showSlack ? 'block' : 'none';
             document.getElementById('resume-confirm-overlay').style.display = 'flex';
         }
 
@@ -2013,45 +2053,22 @@
             //     `※保存されたCSVファイルを添付して送信してください。`
             // );
 
-            // ★ CSV保存後の「削除確認ダイアログ」を確実に1回だけ表示するための仕組み
-            //   Slackアプリへ遷移するため、固定タイマーでは表示タイミングが競合する。
-            //   そこで「画面復帰(visibilitychange)」または「フォールバックタイマー」の
-            //   どちらか早い方で1回だけダイアログを出す。
-            let resumeConfirmShown = false;
-            const showResumeConfirmOnce = () => {
-                if (resumeConfirmShown) return;
-                resumeConfirmShown = true;
-                document.removeEventListener("visibilitychange", onVisible);
-                showResumeConfirm(
-                    "CSVを保存しました。\n\n" +
-                    "続きからはじめる = データを残す（再起動時に復元可能）\n" +
-                    "初期化して最初から = 自動保存を削除して店舗選択画面へ",
-                    () => { resetToSetup(); },  // 初期化して最初から
-                    null                        // 続きからはじめる（何もしない）
-                );
-            };
-            const onVisible = () => {
-                if (document.visibilityState === "visible") {
-                    // Slackから戻ってきた直後に少し待ってから表示（描画安定のため）
-                    setTimeout(showResumeConfirmOnce, 300);
-                }
-            };
-            document.addEventListener("visibilitychange", onVisible);
-
-            // ★ V15.6: Slackアプリで指定DMグループを開く
-            setTimeout(() => {
-                window.location.href = SLACK_DM_URL;
-            }, 500);
-
-            // ★ メール送信（従来動作）は一旦コメントアウト
-            //   ※Slackから戻ってきたタイミングでメーラー起動していた処理
-            // setTimeout(() => {
-            //     window.location.href = `mailto:${MAIL_TO}?subject=${subject}&body=${body}`;
-            // }, 3000);
-
-            // ★ フォールバック: Slackへ遷移しなかった/戻りを検知できなかった場合でも
-            //   一定時間後に必ず確認ダイアログを出す（visibilitychangeが先に発火すれば無効）
-            setTimeout(showResumeConfirmOnce, 4000);
+            // ★ V15.9: 保存後は自動遷移せず、確認ダイアログを即表示する。
+            //   Slackへの遷移は「Slackで送信先を開く」ボタンのタップ(ユーザージェスチャ)で
+            //   openSlackDM() から発火 → iOSでも指定Group DMへ確実に遷移する。
+            //   （旧: 保存直後に自動 location.href していたため Slackは開くがDM未選択になっていた）
+            //   ダイアログはSlackから戻ってきても表示されたまま残るので、
+            //   送信後に「続き」または「初期化」を選べる。
+            showResumeConfirm(
+                "CSVを保存しました。\n\n" +
+                "①「Slackで送信先を開く」→ 保存したCSVを添付して送信\n" +
+                "②送信後このアプリに戻り、下のいずれかを選択\n\n" +
+                "続きからはじめる = データを残す（再起動時に復元可能）\n" +
+                "初期化して最初から = 自動保存を削除して店舗選択画面へ",
+                () => { resetToSetup(); },  // 初期化して最初から
+                null,                       // 続きからはじめる（何もしない）
+                true                        // ★ Slackボタンを表示
+            );
         }
     </script>
 </body>
