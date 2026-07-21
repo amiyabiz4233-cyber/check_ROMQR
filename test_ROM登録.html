@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V16.0</title>
+    <title>点検スキャナー V16.1</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -494,7 +494,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V16.0</div>
+        <div class="version-tag">V16.1</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -505,7 +505,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V16.0</div>
+            <div class="version-tag">V16.1</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -600,7 +600,7 @@
 
         // ★ V15.6: CSV保存後に開くSlack DMグループ
         const SLACK_TEAM_ID = "T02F4QUA74M";
-        const SLACK_CHANNEL_ID = "C0BJKLLQT1U";
+        const SLACK_CHANNEL_ID = "C0BKHM4P7EC"; // ★ V16.1: 送信先DMグループ変更
         // ★ V15.9修正: 「Slackは開くが指定DMが選択されない」原因は、CSV保存直後に
         //   ユーザー操作なし(location.href)で自動遷移していたため。iOSはユーザー
         //   ジェスチャ無しの外部遷移でディープリンクのルーティングを落とし、
@@ -2104,3 +2104,7 @@
     </script>
 </body>
 </html>
+
+
+
+
