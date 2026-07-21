@@ -1981,23 +1981,24 @@
             const { blob, fileName } = buildCsvBlobAndFileName();
             saveBlobAsFile(blob, fileName);
 
-            const subject = encodeURIComponent(`点検データ_${shopId}`);
-            const body = encodeURIComponent(
-                `点検データを送付します。\n\n` +
-                `保存ファイル名: ${fileName}\n` +
-                `※保存されたCSVファイルを添付して送信してください。`
-            );
+            // ★ V15.6: メール送信は廃止しSlack送信に変更（メール処理は一旦コメントアウト）
+            // const subject = encodeURIComponent(`点検データ_${shopId}`);
+            // const body = encodeURIComponent(
+            //     `点検データを送付します。\n\n` +
+            //     `保存ファイル名: ${fileName}\n` +
+            //     `※保存されたCSVファイルを添付して送信してください。`
+            // );
 
-            // ★ V15.6: まずSlackアプリで指定DMグループを開く
+            // ★ V15.6: Slackアプリで指定DMグループを開く
             setTimeout(() => {
                 window.location.href = SLACK_DM_URL;
             }, 500);
 
-            // ★ Slackから戻ってきたタイミングでメーラー起動（従来動作は維持）
-            //   ※Slack遷移中はタイマーが停止するため、ブラウザに戻った直後に発火する
-            setTimeout(() => {
-                window.location.href = `mailto:${MAIL_TO}?subject=${subject}&body=${body}`;
-            }, 3000);
+            // ★ メール送信（従来動作）は一旦コメントアウト
+            //   ※Slackから戻ってきたタイミングでメーラー起動していた処理
+            // setTimeout(() => {
+            //     window.location.href = `mailto:${MAIL_TO}?subject=${subject}&body=${body}`;
+            // }, 3000);
 
             // ★ CSV保存後に自動保存データの削除を確認
             setTimeout(() => {
