@@ -568,10 +568,12 @@
 
         const MAIL_TO = "rom_receive@bishop777.com";
 
-        // ★ V15.6: CSV保存後、メーラー起動前に開くSlack DMグループ
+        // ★ V15.6: CSV保存後に開くSlack DMグループ
         const SLACK_TEAM_ID = "T02F4QUA74M";
         const SLACK_CHANNEL_ID = "C0BJKLLQT1U";
-        const SLACK_DM_URL = `slack://channel?team=${SLACK_TEAM_ID}&id=${SLACK_CHANNEL_ID}`;
+        // ★ V15.7修正: slack://channel はモバイルでidを無視し直前のDMを開くことがあるため、
+        //   公式推奨の app_redirect(https) に変更。指定チャンネルへ確実に遷移する。
+        const SLACK_DM_URL = `https://slack.com/app_redirect?team=${SLACK_TEAM_ID}&channel=${SLACK_CHANNEL_ID}`;
 
         // ★ 自動保存キー（※V14.0でも変更しない：既存の保存データを復元できなくなるため）
         const STORAGE_KEY = "inspector_v12_state";
