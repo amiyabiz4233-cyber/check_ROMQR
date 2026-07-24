@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V16.2</title>
+    <title>点検スキャナー V16.3</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -494,7 +494,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V16.2</div>
+        <div class="version-tag">V16.3</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -505,7 +505,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V16.2</div>
+            <div class="version-tag">V16.3</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -527,6 +527,8 @@
             </div>
 
             <div id="rom-input-area" style="display:none; margin-top:10px;">
+                <!-- ★ V16.3: 判別マップにも過去履歴にも無い＝過去に例の無い主基板QR。新タイプの可能性を警告 -->
+                <div id="rom-unknown-note" style="display:none; color:#dc2626; font-weight:bold; margin-bottom:8px; font-size:15px; line-height:1.4; border:2px solid #dc2626; background:#fff0f0; border-radius:6px; padding:8px;">⚠️ 過去に例の無い主基板QRです（新しいタイプの可能性）。KY/EAIとROMを実物どおり手入力・確認してください</div>
                 <div id="rom-history-note" style="display:none; color:#dc2626; font-weight:bold; margin-bottom:8px; font-size:15px; line-height:1.4;">過去取得済みのＲＯＭ番号を自動入力しております</div>
                 <div style="display:flex; gap:5px;">
                     <input
@@ -1172,8 +1174,10 @@
             }
         }
 
+        // ★ V16.3: 判別マップに合致すれば true / 未知タイプなら false を返すよう変更。
+        //   主基板なし・空値は判定対象外として true（＝警告しない）を返す。
         function applyRomTypeFromMainBoard(qrText) {
-            if (typeof qrText !== "string" || !qrText) return;
+            if (typeof qrText !== "string" || !qrText || qrText === "なし") return true;
 
             // ① 「/」を含む → /前から [英字+数字2桁] コードを抽出して判定
             if (qrText.includes("/")) {
@@ -1183,10 +1187,10 @@
                 const type = MAINBOARD_ROM_TYPE_MAP_SLASH[code];
                 if (type) {
                     setRomTypeWithRom3(type);
-                    return;
+                    return true;
                 }
                 setRomTypeWithRom3(getRomType() || "KY"); // 未知コード → 一個前を維持(初回KY)
-                return;
+                return false;
             }
 
             // ② 「/」なし → 先頭4文字プレフィックスで判定
@@ -1194,11 +1198,18 @@
             const t4 = MAINBOARD_ROM_TYPE_MAP_PREFIX4[p4];
             if (t4) {
                 setRomTypeWithRom3(t4);
-                return;
+                return true;
             }
 
-            // ③ 合致なし（未知プレフィックス/主基板なし等）→ 一個前のROMタイプを維持(初回KY)
+            // ③ 合致なし（未知プレフィックス）→ 一個前のROMタイプを維持(初回KY)＋未知フラグ
             setRomTypeWithRom3(getRomType() || "KY");
+            return false;
+        }
+
+        // ★ V16.3: 「過去に例の無い主基板QR」赤文字バナーの表示切替
+        function setUnknownMainboardNote(on) {
+            const note = document.getElementById('rom-unknown-note');
+            if (note) note.style.display = on ? 'block' : 'none';
         }
 
         // ========================================
@@ -1693,8 +1704,10 @@
 
             if (currentStep === 2) {
                 currentData.mainBoardId = pendingValue;
-                applyRomTypeFromMainBoard(pendingValue); // ★ V13.8: KY/EAI初期値を自動設定
-                applyRomFromHistory(pendingValue);       // ★ V15.0: 過去履歴ヒット時はROM①③も自動入力（タイプも上書き）
+                const typeMatched = applyRomTypeFromMainBoard(pendingValue); // ★ V13.8: KY/EAI初期値を自動設定（false=未知タイプ）
+                const histHit = applyRomFromHistory(pendingValue);           // ★ V15.0: 過去履歴ヒット時はROM①③も自動入力（タイプも上書き）
+                // ★ V16.3: 判別マップにも過去履歴にも無い＝過去に例の無い主基板QR → 赤文字警告
+                setUnknownMainboardNote(!typeMatched && !histHit);
                 currentStep = 3;
                 updateUI();
                 focusRomInput();
@@ -1972,6 +1985,7 @@
                 // ★ V15.6/V15.6: 主基板なし → 自動入力状態・赤文字・欄の色をクリア
                 autoFilledRom = null;
                 setRomHistoryHighlight(false);
+                setUnknownMainboardNote(false); // ★ V16.3: 未知主基板の警告もクリア
                 currentStep = 3;
                 updateUI();
                 focusRomInput();
@@ -2003,6 +2017,7 @@
 
             currentStep = 1;
             currentData = { seals: [] };
+            setUnknownMainboardNote(false); // ★ V16.3: 次の台へ移る際に未知主基板の警告をクリア
 
             document.getElementById('seal-list-display').innerHTML = "";
             document.getElementById('manual-input').value = "";
