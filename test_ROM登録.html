@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V16.4</title>
+    <title>点検スキャナー V16.5</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -291,6 +291,9 @@
             background: #f0f0f0; color: #b91c1c; border: 1px solid #ddd; border-radius: 10px;
         }
         #session-new-btn { width: 100%; min-height: 56px; font-size: 18px; margin-top: 4px; }
+        #session-list-empty { text-align:center; color:#666; padding:24px 0; font-size:15px; }
+        #session-list-modal .btn-danger { width:100%; min-height:48px; font-size:16px; margin-top:10px; }
+        #session-list-modal .btn-secondary { width:100%; min-height:48px; font-size:16px; margin-top:10px; }
 
         #resume-confirm-overlay {
             display: none;
@@ -514,7 +517,10 @@
             <h3>📁 保存データを選んで再開</h3>
             <div id="session-list-note">点検開始ごとに保存／7日で自動削除</div>
             <div id="session-list"></div>
+            <div id="session-list-empty" style="display:none;">保存データはありません</div>
             <button id="session-new-btn" class="btn-primary" onclick="startNewFromList()">＋ 新規で点検開始</button>
+            <button class="btn-danger" onclick="clearAllSessions()">🗑 すべて削除</button>
+            <button class="btn-secondary" onclick="closeSessionList()">閉じる</button>
         </div>
     </div>
 
@@ -538,18 +544,19 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V16.4</div>
+        <div class="version-tag">V16.5</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
         <div id="shop-name" class="shop-name-display">店舗を選択してください</div>
         <button class="btn-primary" onclick="startApp()">点検開始</button>
+        <button class="btn-secondary" onclick="showSessionList(true)" style="margin-top:8px;">📁 保存データを開く（前回の続き）</button>
         <div class="shop-list-grid" id="display-shop-list"></div>
     </div>
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V16.4</div>
+            <div class="version-tag">V16.5</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -630,7 +637,7 @@
         </div>
 
         <button class="btn-csv" onclick="downloadCSV()">現在のデータをCSV保存</button>
-        <button class="btn-danger" onclick="manualClearState()" style="margin-bottom:30px;">🗑 自動保存データを手動削除</button>
+        <button class="btn-secondary" onclick="showSessionList(true)" style="margin-bottom:30px;">📁 自動保存データ一覧（続きから／削除）</button>
     </div>
 
     <script>
@@ -908,9 +915,13 @@
             box.innerHTML = ids.map(id => sessionRowHtml(id, sessions[id])).join("");
             return ids.length;
         }
-        function showSessionList() {
+        // ★ V16.5: manual=true なら保存が0件でも一覧を開く（設定画面/一覧ボタンから）。
+        //   起動時(manual省略)は保存があるときだけ自動表示。
+        function showSessionList(manual) {
             const n = renderSessionList();
-            if (n > 0) {
+            const emptyEl = document.getElementById('session-list-empty');
+            if (emptyEl) emptyEl.style.display = (n === 0) ? 'block' : 'none';
+            if (n > 0 || manual) {
                 document.getElementById('session-list-overlay').style.display = 'flex';
             } else {
                 closeSessionList();
@@ -935,8 +946,20 @@
             writeSessions(sessions);
             if (activeSessionId === id) activeSessionId = null;
             const n = renderSessionList();
+            const emptyEl = document.getElementById('session-list-empty');
+            if (emptyEl) emptyEl.style.display = (n === 0) ? 'block' : 'none';
             updateAutosaveDisplay();
-            if (n === 0) closeSessionList();
+        }
+
+        // ★ V16.5: 保存データを全削除
+        function clearAllSessions() {
+            if (!confirm("保存データをすべて削除しますか？（元に戻せません）")) return;
+            writeSessions({});
+            activeSessionId = null;
+            renderSessionList();
+            const emptyEl = document.getElementById('session-list-empty');
+            if (emptyEl) emptyEl.style.display = 'block';
+            updateAutosaveDisplay();
         }
         function startNewFromList() {
             closeSessionList();
