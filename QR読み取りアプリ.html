@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V16.4</title>
+    <title>点検スキャナー V16.6</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -152,6 +152,33 @@
             box-sizing: border-box;
         }
 
+        /* ★ V16.6: ROM①/③ 用スピンボタン */
+        .rom-spin-row {
+            display: flex;
+            gap: 4px;
+            margin-top: 4px;
+        }
+        .rom-spin-btn {
+            flex: 1;
+            height: 38px;
+            padding: 0;
+            margin: 0;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            background: #f7f7f7;
+            color: #333;
+            font-size: 18px;
+            font-weight: bold;
+            line-height: 1;
+            box-sizing: border-box;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .rom-spin-btn:active {
+            background: #e0e0e0;
+        }
+
         .shop-name-display {
             color: #007bff;
             font-weight: bold;
@@ -291,6 +318,9 @@
             background: #f0f0f0; color: #b91c1c; border: 1px solid #ddd; border-radius: 10px;
         }
         #session-new-btn { width: 100%; min-height: 56px; font-size: 18px; margin-top: 4px; }
+        #session-list-empty { text-align:center; color:#666; padding:24px 0; font-size:15px; }
+        #session-list-modal .btn-danger { width:100%; min-height:48px; font-size:16px; margin-top:10px; }
+        #session-list-modal .btn-secondary { width:100%; min-height:48px; font-size:16px; margin-top:10px; }
 
         #resume-confirm-overlay {
             display: none;
@@ -514,7 +544,10 @@
             <h3>📁 保存データを選んで再開</h3>
             <div id="session-list-note">点検開始ごとに保存／7日で自動削除</div>
             <div id="session-list"></div>
+            <div id="session-list-empty" style="display:none;">保存データはありません</div>
             <button id="session-new-btn" class="btn-primary" onclick="startNewFromList()">＋ 新規で点検開始</button>
+            <button class="btn-danger" onclick="clearAllSessions()">🗑 すべて削除</button>
+            <button class="btn-secondary" onclick="closeSessionList()">閉じる</button>
         </div>
     </div>
 
@@ -538,18 +571,19 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V16.4</div>
+        <div class="version-tag">V16.6</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
         <div id="shop-name" class="shop-name-display">店舗を選択してください</div>
         <button class="btn-primary" onclick="startApp()">点検開始</button>
+        <button class="btn-secondary" onclick="showSessionList(true)" style="margin-top:8px;">📁 保存データを開く（前回の続き）</button>
         <div class="shop-list-grid" id="display-shop-list"></div>
     </div>
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V16.4</div>
+            <div class="version-tag">V16.6</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -574,33 +608,55 @@
                 <!-- ★ V16.3: 判別マップにも過去履歴にも無い＝過去に例の無い主基板QR。新タイプの可能性を警告 -->
                 <div id="rom-unknown-note" style="display:none; color:#dc2626; font-weight:bold; margin-bottom:8px; font-size:15px; line-height:1.4; border:2px solid #dc2626; background:#fff0f0; border-radius:6px; padding:8px;">⚠️ 過去に例の無い主基板QRです（新しいタイプの可能性）。KY/EAIとROMを実物どおり手入力・確認してください</div>
                 <div id="rom-history-note" style="display:none; color:#dc2626; font-weight:bold; margin-bottom:8px; font-size:15px; line-height:1.4;">過去取得済みのＲＯＭ番号を自動入力しております</div>
-                <div style="display:flex; gap:5px;">
-                    <input
-                        type="text"
-                        inputmode="text"
-                        id="rom-1"
-                        style="flex:1;"
-                        placeholder="数字/音声"
-                        onclick="this.select();"
-                        onblur="handleRom1Blur()"
-                        oninput="handleRom1Input(event)"
-                    >
-                    <button
-                        id="rom-select"
-                        type="button"
-                        class="rom-toggle-btn"
-                        data-value="KY"
-                        onclick="toggleRomType()"
-                    >KY</button>
-                    <input
-                        type="text"
-                        inputmode="text"
-                        id="rom-3"
-                        style="flex:1;"
-                        placeholder="数字/音声(空欄可)"
-                        onclick="this.select();"
-                        oninput="handleRom3Input(event)"
-                    >
+                <div style="display:flex; gap:5px; align-items:flex-start;">
+                    <div style="flex:1; min-width:0;">
+                        <input
+                            type="text"
+                            inputmode="text"
+                            id="rom-1"
+                            placeholder="数字/音声"
+                            onclick="this.select();"
+                            onblur="handleRom1Blur()"
+                            oninput="handleRom1Input(event)"
+                        >
+                        <!-- ★ V16.6: ROM① スピンボタン（自動送り・自動確定は発火させない） -->
+                        <div class="rom-spin-row">
+                            <button type="button" class="rom-spin-btn"
+                                onmousedown="event.preventDefault();"
+                                onclick="spinRom('rom-1', -1)">↓</button>
+                            <button type="button" class="rom-spin-btn"
+                                onmousedown="event.preventDefault();"
+                                onclick="spinRom('rom-1', 1)">↑</button>
+                        </div>
+                    </div>
+                    <div style="flex:1; min-width:0;">
+                        <button
+                            id="rom-select"
+                            type="button"
+                            class="rom-toggle-btn"
+                            data-value="KY"
+                            onclick="toggleRomType()"
+                        >KY</button>
+                    </div>
+                    <div style="flex:1; min-width:0;">
+                        <input
+                            type="text"
+                            inputmode="text"
+                            id="rom-3"
+                            placeholder="数字/音声(空欄可)"
+                            onclick="this.select();"
+                            oninput="handleRom3Input(event)"
+                        >
+                        <!-- ★ V16.6: ROM③ スピンボタン（自動確定は発火させない） -->
+                        <div class="rom-spin-row">
+                            <button type="button" class="rom-spin-btn"
+                                onmousedown="event.preventDefault();"
+                                onclick="spinRom('rom-3', -1)">↓</button>
+                            <button type="button" class="rom-spin-btn"
+                                onmousedown="event.preventDefault();"
+                                onclick="spinRom('rom-3', 1)">↑</button>
+                        </div>
+                    </div>
                 </div>
                 <button type="button" id="rom-kb-toggle" class="btn-secondary" style="margin-top:6px;" onmousedown="event.preventDefault();" onclick="toggleRomKbMode()">⌨ 数字入力</button>
                 <button id="btn-rom-confirm" class="btn-primary" onclick="handleManualInput()">ROM確定</button>
@@ -630,7 +686,7 @@
         </div>
 
         <button class="btn-csv" onclick="downloadCSV()">現在のデータをCSV保存</button>
-        <button class="btn-danger" onclick="manualClearState()" style="margin-bottom:30px;">🗑 自動保存データを手動削除</button>
+        <button class="btn-secondary" onclick="showSessionList(true)" style="margin-bottom:30px;">📁 自動保存データ一覧（続きから／削除）</button>
     </div>
 
     <script>
@@ -908,9 +964,13 @@
             box.innerHTML = ids.map(id => sessionRowHtml(id, sessions[id])).join("");
             return ids.length;
         }
-        function showSessionList() {
+        // ★ V16.5: manual=true なら保存が0件でも一覧を開く（設定画面/一覧ボタンから）。
+        //   起動時(manual省略)は保存があるときだけ自動表示。
+        function showSessionList(manual) {
             const n = renderSessionList();
-            if (n > 0) {
+            const emptyEl = document.getElementById('session-list-empty');
+            if (emptyEl) emptyEl.style.display = (n === 0) ? 'block' : 'none';
+            if (n > 0 || manual) {
                 document.getElementById('session-list-overlay').style.display = 'flex';
             } else {
                 closeSessionList();
@@ -935,8 +995,20 @@
             writeSessions(sessions);
             if (activeSessionId === id) activeSessionId = null;
             const n = renderSessionList();
+            const emptyEl = document.getElementById('session-list-empty');
+            if (emptyEl) emptyEl.style.display = (n === 0) ? 'block' : 'none';
             updateAutosaveDisplay();
-            if (n === 0) closeSessionList();
+        }
+
+        // ★ V16.5: 保存データを全削除
+        function clearAllSessions() {
+            if (!confirm("保存データをすべて削除しますか？（元に戻せません）")) return;
+            writeSessions({});
+            activeSessionId = null;
+            renderSessionList();
+            const emptyEl = document.getElementById('session-list-empty');
+            if (emptyEl) emptyEl.style.display = 'block';
+            updateAutosaveDisplay();
         }
         function startNewFromList() {
             closeSessionList();
@@ -1685,6 +1757,58 @@
             });
         }
 
+        // ========================================
+        // ★ V16.6: ROM①/③ スピンボタン（↑↓で±1）
+        //   ・ROM① = 4桁ゼロ埋め / ROM③ = 3桁ゼロ埋め
+        //   ・スピン操作では「4桁で自動フォーカス移動」「3桁で自動確定」を発火させない
+        //     （手入力・音声入力での自動送りは従来どおり動作する）
+        // ========================================
+        const ROM_SPIN_DIGITS = { 'rom-1': 4, 'rom-3': 3 };
+        const romSpinGuard = { 'rom-1': 0, 'rom-3': 0 }; // 最後にスピン操作した時刻(ms)
+        const ROM_SPIN_GUARD_MS = 800;
+
+        // スピン直後かどうか（blur等の自動送り抑止用）
+        function isRomSpinGuarded(id) {
+            return (Date.now() - (romSpinGuard[id] || 0)) < ROM_SPIN_GUARD_MS;
+        }
+
+        function spinRom(id, delta) {
+            if (currentStep !== 3) return;
+
+            const el = document.getElementById(id);
+            if (!el) return;
+
+            const digits = ROM_SPIN_DIGITS[id] || 4;
+            const max = Math.pow(10, digits) - 1;
+
+            // 全角→半角・数字以外除去（表示も正規化）
+            const cur = sanitizeRomDigits(el);
+
+            let n;
+            if (cur === "") {
+                // 空欄からは ↑ → 1 / ↓ → 0 スタート
+                n = (delta > 0) ? 1 : 0;
+            } else {
+                n = parseInt(cur, 10) + delta;
+            }
+
+            if (isNaN(n)) n = 0;
+            if (n < 0) n = 0;            // 0未満にはしない
+            if (n > max) n = max;        // 桁あふれ防止
+
+            // ★ スピンガードを立ててから value を書き換える
+            romSpinGuard[id] = Date.now();
+
+            // 途中の自動送り処理が予約されていたら破棄
+            clearTimeout(romInputTimer[id]);
+            romInputTimer[id] = null;
+
+            el.value = String(n).padStart(digits, '0');
+
+            // ※ 意図的に input イベントを dispatch しない
+            //    → handleRom1Input / handleRom3Input が走らないので自動送りも発火しない
+        }
+
         // ROM① 入力イベント（数字モード=即時 / 音声モード=デバウンス）
         function handleRom1Input(ev) {
             if (currentStep !== 3) return;
@@ -1724,6 +1848,7 @@
         function handleRom1Blur() {
             if (currentStep !== 3) return;
             if (romComposing['rom-1']) return; // ★ 変換中のblurでは触らない
+            if (isRomSpinGuarded('rom-1')) return; // ★ V16.6: スピン操作直後は自動送りしない
 
             const rom1 = document.getElementById('rom-1');
             const rom3 = document.getElementById('rom-3');
