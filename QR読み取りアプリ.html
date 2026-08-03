@@ -179,6 +179,33 @@
             background: #e0e0e0;
         }
 
+        /* ★ V16.6: ROM①/③ 選択切替（← →）ボタン */
+        .rom-nav-row {
+            display: flex;
+            gap: 6px;
+            margin-top: 8px;
+        }
+        .rom-nav-btn {
+            flex: 1;
+            height: 48px;
+            padding: 0;
+            margin: 0;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            background: #fff;
+            color: #333;
+            font-size: 24px;
+            font-weight: bold;
+            line-height: 1;
+            box-sizing: border-box;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .rom-nav-btn:active {
+            background: #e6e6e6;
+        }
+
         .shop-name-display {
             color: #007bff;
             font-weight: bold;
@@ -658,8 +685,17 @@
                         </div>
                     </div>
                 </div>
-                <button type="button" id="rom-kb-toggle" class="btn-secondary" style="margin-top:6px;" onmousedown="event.preventDefault();" onclick="toggleRomKbMode()">⌨ 数字入力</button>
+                <!-- ★ V16.6: ROM①/③ 選択切替（←=ROM① / →=ROM③、入力済み文字は全選択） -->
+                <div class="rom-nav-row">
+                    <button type="button" class="rom-nav-btn"
+                        onmousedown="event.preventDefault();"
+                        onclick="selectRomField('rom-1')">←</button>
+                    <button type="button" class="rom-nav-btn"
+                        onmousedown="event.preventDefault();"
+                        onclick="selectRomField('rom-3')">→</button>
+                </div>
                 <button id="btn-rom-confirm" class="btn-primary" onclick="handleManualInput()">ROM確定</button>
+                <button type="button" id="rom-kb-toggle" class="btn-secondary" onmousedown="event.preventDefault();" onclick="toggleRomKbMode()">⌨ 数字入力</button>
                 <button class="btn-secondary" onclick="skipRomInput()">ROM入力スキップ</button>
             </div>
 
@@ -1838,6 +1874,38 @@
 
             // ※ 意図的に input イベントを dispatch しない
             //    → handleRom1Input / handleRom3Input が走らないので自動送りも発火しない
+        }
+
+        // ========================================
+        // ★ V16.6: ←/→ ボタンで ROM①/ROM③ を選択（入力済み文字列は全選択）
+        //   ・ボタンは onmousedown で preventDefault 済み＝キーボードを閉じない
+        //   ・移動そのものが目的なので blur 由来の自動フォーカス移動は抑止
+        // ========================================
+        function selectRomField(id) {
+            if (currentStep !== 3) return;
+
+            const el = document.getElementById(id);
+            if (!el) return;
+
+            // ★ blur起因の自動フォーカス移動(handleRom1Blur)を抑止
+            romSpinGuard['rom-1'] = Date.now();
+
+            const focusAndSelect = function () {
+                try {
+                    el.focus({ preventScroll: true });
+                } catch (e) {
+                    el.focus();
+                }
+                el.click();
+                try {
+                    el.select();
+                    if (el.setSelectionRange) el.setSelectionRange(0, (el.value || "").length);
+                } catch (e) {}
+            };
+
+            focusAndSelect();
+            // ★ iOSはフォーカス直後に選択が解除される事があるため再適用
+            setTimeout(focusAndSelect, 60);
         }
 
         // ROM① 入力イベント（数字モード=即時 / 音声モード=デバウンス）
