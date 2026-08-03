@@ -797,6 +797,7 @@
 
         let staffId, shopId;
         let currentStep = 1;
+        let lastRenderedStep = 0; // ★ V16.6: ステップ変化検知（画面遷移時のスクロールトップ用）
         let currentData = { seals: [] };
         let allData = [];
         let html5QrCode;
@@ -926,6 +927,7 @@
 
             document.getElementById('setup-screen').style.display = 'none';
             document.getElementById('main-app').style.display = 'block';
+            scrollToTopInstant(); // ★ V16.6: 画面遷移＝最上部へ
 
             updateUI();
             initScanner();
@@ -972,6 +974,8 @@
             if (emptyEl) emptyEl.style.display = (n === 0) ? 'block' : 'none';
             if (n > 0 || manual) {
                 document.getElementById('session-list-overlay').style.display = 'flex';
+                scrollElTop('session-list-modal'); // ★ V16.6
+                scrollToTopInstant();              // ★ V16.6
             } else {
                 closeSessionList();
             }
@@ -979,6 +983,7 @@
         function closeSessionList() {
             const ov = document.getElementById('session-list-overlay');
             if (ov) ov.style.display = 'none';
+            scrollToTopInstant(); // ★ V16.6
         }
         function resumeSession(id) {
             const sessions = loadSessions();
@@ -1032,10 +1037,12 @@
             document.getElementById('resume-slack-btn').style.display = showSlack ? 'block' : 'none';
             document.getElementById('resume-mail-btn').style.display = showSlack ? 'block' : 'none';
             document.getElementById('resume-confirm-overlay').style.display = 'flex';
+            scrollToTopInstant(); // ★ V16.6
         }
 
         function resumeConfirmChoice(isInit) {
             document.getElementById('resume-confirm-overlay').style.display = 'none';
+            scrollToTopInstant(); // ★ V16.6
             const action = isInit ? resumeInitAction : resumeResumeAction;
             resumeInitAction = null;
             resumeResumeAction = null;
@@ -1137,10 +1144,33 @@
             }
         });
 
-        function scrollToTopInstant() {
-            window.scrollTo({ top: 0, behavior: 'auto' });
-            document.body.scrollTop = 0;
-            document.documentElement.scrollTop = 0;
+        // ========================================
+        // ★ V16.6: 画面遷移時は必ず最上部へ戻す
+        //   ・iOS Safari は描画確定前にスクロールしても効かない事があるため
+        //     即時 / requestAnimationFrame / 遅延 の3段構えで実行
+        //   ・withRetry=false でキーボード表示中の巻き戻り事故を回避
+        // ========================================
+        function scrollToTopInstant(withRetry) {
+            const doScroll = function () {
+                try {
+                    window.scrollTo({ top: 0, behavior: 'auto' });
+                } catch (e) {
+                    window.scrollTo(0, 0);
+                }
+                if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+                if (document.documentElement) document.documentElement.scrollTop = 0;
+                if (document.body) document.body.scrollTop = 0;
+            };
+
+            doScroll();
+            if (window.requestAnimationFrame) requestAnimationFrame(doScroll);
+            if (withRetry !== false) setTimeout(doScroll, 120);
+        }
+
+        // ★ V16.6: モーダル内部のスクロール位置も先頭へ
+        function scrollElTop(id) {
+            const el = document.getElementById(id);
+            if (el) el.scrollTop = 0;
         }
 
         function showScanToast(message) {
@@ -1230,6 +1260,7 @@
 
             document.getElementById('setup-screen').style.display = 'none';
             document.getElementById('main-app').style.display = 'block';
+            scrollToTopInstant(); // ★ V16.6: 画面遷移＝最上部へ
 
             updateUI();
             initScanner();
@@ -1980,6 +2011,7 @@
             }
 
             document.getElementById('confirm-overlay').style.display = 'flex';
+            scrollToTopInstant(); // ★ V16.6
         }
 
         function approveValue() {
@@ -2026,6 +2058,7 @@
         function showBackConfirm(action) {
             pendingBackAction = (typeof action === 'function') ? action : null;
             document.getElementById('back-confirm-overlay').style.display = 'flex';
+            scrollToTopInstant(); // ★ V16.6
         }
 
         // ★ 確認モーダルの「戻る」：即戻らず赤い警告で確認
@@ -2087,8 +2120,13 @@
             const titles = ["", "① 台番号スキャン", "② 主基板スキャン", "③ ROM入力", "④ 封印スキャン"];
             document.getElementById('status').innerText = titles[currentStep];
 
-            if (currentStep === 1) {
-                scrollToTopInstant();
+            // ★ V16.6: ステップ(=ページ)が切り替わったら必ず最上部へ戻す
+            //    ROM入力欄フォーカス等と競合しないよう遅延リトライはしない
+            if (lastRenderedStep !== currentStep) {
+                lastRenderedStep = currentStep;
+                scrollToTopInstant(false);
+            } else if (currentStep === 1) {
+                scrollToTopInstant(false);
             }
         }
 
@@ -2177,10 +2215,13 @@
             document.getElementById('edit-rom').value = d.romId || "";
             document.getElementById('edit-seals').value = d.sealsText || "";
             document.getElementById('edit-overlay').style.display = 'flex';
+            scrollElTop('edit-modal');  // ★ V16.6
+            scrollToTopInstant();       // ★ V16.6
         }
 
         function closeEdit() {
             document.getElementById('edit-overlay').style.display = 'none';
+            scrollToTopInstant(); // ★ V16.6
             editIndex = -1;
         }
 
