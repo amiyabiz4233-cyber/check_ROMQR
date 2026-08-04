@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V16.6</title>
+    <title>点検スキャナー V16.7</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -598,7 +598,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V16.6</div>
+        <div class="version-tag">V16.7</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -610,7 +610,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V16.6</div>
+            <div class="version-tag">V16.7</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -843,7 +843,8 @@
         let toastTimer = null;
         let audioContext = null;
         let torchOn = false;       // 実際のLED状態
-        let torchDesired = false;  // ★ ユーザーが点けたい状態（カメラ復帰時に復元）
+        // ★ V16.7: ライトは初期値ON（カメラ起動・復帰時に自動点灯。ユーザーが消せばOFFを保持）
+        let torchDesired = true;   // ★ ユーザーが点けたい状態（カメラ復帰時に復元）
 
         // ========================================
         // ★ 自動保存・復元処理
@@ -1127,7 +1128,7 @@
                 if (html5QrCode) await html5QrCode.stop();
             } catch (e) {}
             torchOn = false;
-            torchDesired = false;
+            torchDesired = true; // ★ V16.7: 次回起動時も初期値ON
 
             document.getElementById('main-app').style.display = 'none';
             document.getElementById('setup-screen').style.display = 'block';
@@ -1323,7 +1324,7 @@
             }
 
             torchOn = false;
-            torchDesired = false; // ★ カメラ再起動時は意図もリセット
+            torchDesired = true; // ★ V16.7: カメラ再起動時は初期値ON に戻す
             updateTorchButton();
             getTorchButtons().forEach(b => b.style.display = 'none');
 
@@ -1360,6 +1361,11 @@
                 const capabilities = html5QrCode.getRunningTrackCapabilities();
                 const show = !!(capabilities && capabilities.torch);
                 btns.forEach(b => b.style.display = show ? 'block' : 'none');
+
+                // ★ V16.7: 対応端末なら起動直後に初期値ONを適用（ROM入力中=カメラ非表示時は除く）
+                if (show && currentStep !== 3) {
+                    restoreTorchIfDesired();
+                }
             } catch (e) {
                 console.warn("トーチ対応判定失敗", e);
                 btns.forEach(b => b.style.display = 'none');
