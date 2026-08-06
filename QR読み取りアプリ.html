@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V16.8</title>
+    <title>点検スキャナー V17.4</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -598,7 +598,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V16.8</div>
+        <div class="version-tag">V17.4</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -610,7 +610,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V16.8</div>
+            <div class="version-tag">V17.4</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -635,6 +635,8 @@
                 <!-- ★ V16.3: 判別マップにも過去履歴にも無い＝過去に例の無い主基板QR。新タイプの可能性を警告 -->
                 <div id="rom-unknown-note" style="display:none; color:#dc2626; font-weight:bold; margin-bottom:8px; font-size:15px; line-height:1.4; border:2px solid #dc2626; background:#fff0f0; border-radius:6px; padding:8px;">⚠️ 過去に例の無い主基板QRです（新しいタイプの可能性）。KY/EAIとROMを実物どおり手入力・確認してください</div>
                 <div id="rom-history-note" style="display:none; color:#dc2626; font-weight:bold; margin-bottom:8px; font-size:15px; line-height:1.4;">過去取得済みのＲＯＭ番号を自動入力しております</div>
+                <!-- ★ V16.9: 相似度80%超の類似主基板QRからROMを予測入力したときの案内（完全一致=赤 とは別色のオレンジ） -->
+                <div id="rom-fuzzy-note" style="display:none; color:#ffffff; font-weight:bold; margin-bottom:5px; font-size:13px; line-height:1.35; border:1px solid #4c1d95; background:linear-gradient(135deg,#7c3aed 0%,#a855f7 60%,#c026d3 100%); border-radius:5px; padding:5px 7px; text-shadow:0 1px 1px rgba(0,0,0,.3);"></div>
                 <div style="display:flex; gap:5px; align-items:flex-start;">
                     <div style="flex:1; min-width:0;">
                         <input
@@ -1576,6 +1578,311 @@
             return local[key] || local[mainBoardQr] || MAINBOARD_ROM_HISTORY[key] || null;
         }
 
+        // ================================================================
+        // ★ V16.9: 主基板QRの「相似度」によるROM予測入力
+        //   目的: 完全一致の実績が無い主基板QRでも、過去QRと十分似ていれば
+        //         そのROMを予測値として自動入力し、入力手間と打ち間違いを減らす。
+        //
+        //   判定手順（applyRomFromFuzzyHistory）:
+        //     ① 完全一致（applyRomFromHistory）でヒットした場合は本処理を呼ばない
+        //     ② 相似度 = 1 - レーベンシュタイン距離 / 長い方の文字数
+        //     ③ 相似度が FUZZY_SIM_THRESHOLD(=0.8) 以上の候補のみ対象
+        //     ④ 最高相似度が同率で複数ある場合は「一番新しい実績」を採用する
+        //        （主基板QRは連番なので1文字違いの候補が複数ヒットするのが普通。
+        //          新しい実績＝現行ROMに近いので、下記の優先順で1件に決める）
+        //            1. 端末で学習した履歴(localStorage)＝最も新しい実績
+        //            2. 埋め込み履歴の中で「登場順が後ろ」のもの
+        //               ※MAINBOARD_ROM_HISTORY は履歴xlsxの行順で生成しており、
+        //                 後ろの行＝新しい登録。JSのオブジェクトは文字列キーの
+        //                 挿入順を保持するため for...in の順番＝xlsxの行順になる
+        //          ROMが複数種類あった場合はバナーに候補数・種類数を出して注意喚起する
+        //     ⑤ 相似度80%超の候補が1件も無ければ従来どおり前回入力値がそのまま残る
+        //
+        //   誤爆防止の安全弁（現場で違う機種のROMが入る事故を防ぐ）:
+        //     ・★ V17.3 QR形式チェック（FUZZY_SHAPE_CHECK）
+        //         履歴xlsx 5,264行を全件検証した結果、正常な主基板QRは次の2形式のみ
+        //         （長さのブレは0件。V17.2までの「8文字以上ならOK」より厳密）:
+        //           形式A（「/」なし）: [英字][数字][英字2][数字9]  = 必ず13桁 … 3,138件
+        //           形式B（「/」あり）: [数字][英字][数字2]/[数字5] = 必ず10桁 … 2,054件
+        //         → どちらにも合致しないQRは「読み取りミス」なので予測に使わない。
+        //         → スキャンしたQR側だけでなく、照合元の候補側もチェックする
+        //            （埋め込み履歴には誤スキャン由来のQRが20件混入しているため。
+        //              例: 94270 / 97410 / G44CY3E61A / 1O26017652 / AB0514785 …）
+        //         → 形式A同士・形式B同士でしか比較しない（形式違いは別物）
+        //     ・FUZZY_PREFIX_LEN(=2)… 先頭2文字（機種コード C1/M2/P2/K1 等）の
+        //                             一致を必須にする。別機種のROMを拾わせない。
+        //     ・端末で学習した履歴(localStorage)を埋め込み履歴より優先
+        //       （同じ相似度なら、より新しい実績を採用）
+        //
+        //   すべて先頭の定数で調整可（0 や false にすれば無効化できる）
+        // ================================================================
+        const FUZZY_ENABLED        = true;  // 予測入力そのもののON/OFF
+        const FUZZY_SIM_THRESHOLD  = 0.8;   // 相似度のしきい値（0.8 = 8割）
+        const FUZZY_PREFIX_LEN     = 2;     // 先頭N文字の一致を必須にする（0で無効）
+        const FUZZY_SHAPE_CHECK    = true;  // QR形式チェック（falseで無効化＝V17.2相当）
+
+        // ★ V17.3: 主基板QRの形式を判定して 'A' / 'B' / null を返す
+        //   'A'  … 「/」なし  [英字][数字][英字2][数字9]   例 M2JB260511788（13桁）
+        //   'B'  … 「/」あり  [数字][英字][数字2]/[数字5]  例 1K56/79393  （10桁）
+        //   null … どちらでもない＝読み取りミスの疑い
+        //          （数字だけ / 空白混入 / 桁数違い / 20桁 など）
+        const RE_MB_SHAPE_A = /^[A-Z]\d[A-Z]{2}\d{9}$/;
+        const RE_MB_SHAPE_B = /^\d[A-Z]\d{2}\/\d{5}$/;
+
+        function mainboardQrShape(qs) {
+            if (typeof qs !== "string" || !qs) return null;
+            if (/[\s\u3000]/.test(qs)) return null;   // 半角/全角スペース混入は誤読
+            if (RE_MB_SHAPE_A.test(qs)) return 'A';
+            if (RE_MB_SHAPE_B.test(qs)) return 'B';
+            return null;
+        }
+
+        // ★ V16.9: 予測入力の状態（ROM確定・次の台へ移る際にクリア）
+        let fuzzyFilledRom = null;   // 予測入力したROM値（例 "2541KY454"）
+        let fuzzyMatchedQr = null;   // 予測の照合元になった過去の主基板QR
+
+        // ----------------------------------------------------------------
+        // ★ V16.9: レーベンシュタイン距離（maxDist超で即打ち切り＝高速化）
+        //   ・戻り値: 距離（0以上） / maxDistを超えていたら -1
+        //   ・対角バンド(±maxDist)だけ計算するので4,800件走査でも数ms程度
+        // ----------------------------------------------------------------
+        function levenshteinWithin(a, b, maxDist) {
+            const la = a.length, lb = b.length;
+
+            // 文字数差だけで既にmaxDistを超えるなら計算不要
+            if (Math.abs(la - lb) > maxDist) return -1;
+            if (la === 0) return (lb <= maxDist) ? lb : -1;
+            if (lb === 0) return (la <= maxDist) ? la : -1;
+
+            const BIG = maxDist + 1;
+            let prev = new Array(lb + 1);
+            let cur  = new Array(lb + 1);
+
+            for (let j = 0; j <= lb; j++) prev[j] = j;
+
+            for (let i = 1; i <= la; i++) {
+                cur[0] = i;
+
+                // このi行で計算する列の範囲（バンド）
+                const from = Math.max(1, i - maxDist);
+                const to   = Math.min(lb, i + maxDist);
+
+                // バンド外の左隣は「大きい値」で埋めておく（参照されるため必須）
+                if (from > 1) cur[from - 1] = BIG;
+
+                let rowMin = BIG;
+                const ca = a.charCodeAt(i - 1);
+
+                for (let j = from; j <= to; j++) {
+                    const cost = (ca === b.charCodeAt(j - 1)) ? 0 : 1;
+                    let v   = prev[j - 1] + cost;   // 置換 or 一致
+                    const d = prev[j] + 1;          // 削除
+                    const s = cur[j - 1] + 1;       // 挿入
+                    if (d < v) v = d;
+                    if (s < v) v = s;
+                    cur[j] = v;
+                    if (v < rowMin) rowMin = v;
+                }
+
+                // バンド右側も大きい値で埋める
+                for (let j = to + 1; j <= lb; j++) cur[j] = BIG;
+
+                // この行の最小値がmaxDistを超えたら以降改善しない＝打ち切り
+                if (rowMin > maxDist) return -1;
+
+                const t = prev; prev = cur; cur = t;
+            }
+
+            const dist = prev[lb];
+            return (dist > maxDist) ? -1 : dist;
+        }
+
+        // ----------------------------------------------------------------
+        // ★ V16.9: 相似度が最も高い過去主基板QRを探す
+        //   戻り値:
+        //     null … 相似度しきい値を超える候補が無い
+        //     {qr, rom, sim, dist, tieTotal, tieSame, romVariants}
+        //        qr          … 予測の照合元になった過去の主基板QR
+        //        rom         … 予測ROM値（同率候補のうち一番新しい実績）
+        //        sim         … 相似度(0〜1)
+        //        tieTotal    … 同率トップの候補総数
+        //        romVariants … 同率トップに含まれるROM値の種類数（2以上なら要注意）
+        // ----------------------------------------------------------------
+        function findFuzzyRomHistory(mainBoardQr) {
+            const key = normalizeQrKey(mainBoardQr);
+            if (!key || mainBoardQr === "なし") return null;
+
+            // ★ V17.3: スキャンしたQR自体が既知の2形式に合致しなければ予測しない
+            //   （読み取りミスのQRを元に予測しても意味がない＝前回入力値のまま残す）
+            const keyShape = mainboardQrShape(key);
+            if (FUZZY_SHAPE_CHECK && !keyShape) return null;
+
+            const pre = (FUZZY_PREFIX_LEN > 0) ? key.substring(0, FUZZY_PREFIX_LEN) : "";
+            const cands = [];
+
+            // priority: 2 = 端末で学習した履歴（新しい） / 1 = 埋め込み履歴
+            // idx: 辞書内の登場順（大きいほど新しい登録＝履歴xlsxの後ろの行）
+            let idx = 0;
+            const scan = function (dict, priority) {
+                if (!dict) return;
+                for (const rawKey in dict) {
+                    idx++;
+                    if (!Object.prototype.hasOwnProperty.call(dict, rawKey)) continue;
+
+                    const k = normalizeQrKey(rawKey);
+                    if (!k || k === key) continue;                       // 完全一致は別処理
+                    // ★ V17.3: 照合元の候補も形式チェック（辞書に混入している誤スキャンQRを排除）
+                    //   さらに形式A同士・形式B同士でしか比較しない
+                    if (FUZZY_SHAPE_CHECK && mainboardQrShape(k) !== keyShape) continue;
+                    if (pre && k.substring(0, FUZZY_PREFIX_LEN) !== pre) continue; // 機種違いは除外
+
+                    const rom = dict[rawKey];
+                    if (typeof rom !== "string" || !ROM_VALUE_PATTERN.test(rom)) continue;
+
+                    // このペアで許容される最大編集距離（相似度しきい値から逆算）
+                    const maxLen = Math.max(key.length, k.length);
+                    const maxAllowed = Math.floor(maxLen * (1 - FUZZY_SIM_THRESHOLD) + 1e-9);
+                    if (maxAllowed < 1) continue;   // 1文字も違えない＝実質完全一致のみ
+
+                    const dist = levenshteinWithin(key, k, maxAllowed);
+                    if (dist < 0) continue;         // しきい値未満
+
+                    cands.push({
+                        qr: k,
+                        rom: rom,
+                        dist: dist,
+                        sim: 1 - (dist / maxLen),
+                        priority: priority,
+                        idx: idx           // 登場順（大きい＝新しい）
+                    });
+                }
+            };
+
+            try { scan(loadLocalRomHistory(), 2); } catch (e) {}
+            scan(MAINBOARD_ROM_HISTORY, 1);
+
+            if (!cands.length) return null;
+
+            // --- 並び順 = 相似度降順 → 端末学習優先 → 登場順が後ろ（＝一番新しい実績） ---
+            cands.sort(function (x, y) {
+                if (Math.abs(y.sim - x.sim) > 1e-9) return y.sim - x.sim; // ① 相似度が高い
+                if (y.priority !== x.priority) return y.priority - x.priority; // ② 端末学習を優先
+                return y.idx - x.idx;                                     // ③ 一番新しい登録
+            });
+
+            const top = cands[0];   // ← ①〜③で1件に確定（毎回同じ結果になる）
+
+            // 同率トップが何件あり、ROMが何種類に分かれているかを警告表示用に集計
+            const ties = cands.filter(function (c) { return Math.abs(c.sim - top.sim) < 1e-9; });
+            const romSet = {};
+            ties.forEach(function (c) { romSet[c.rom] = true; });
+
+            return {
+                qr: top.qr,
+                rom: top.rom,
+                sim: top.sim,
+                dist: top.dist,
+                tieTotal: ties.length,
+                romVariants: Object.keys(romSet).length
+            };
+        }
+
+        // ----------------------------------------------------------------
+        // ★ V16.9: 予測入力バナー（オレンジ）の表示切替
+        // ----------------------------------------------------------------
+        function setRomFuzzyNote(html) {
+            const note = document.getElementById('rom-fuzzy-note');
+            if (!note) return;
+            if (html) {
+                note.innerHTML = html;
+                note.style.display = 'block';
+            } else {
+                note.innerHTML = '';
+                note.style.display = 'none';
+            }
+        }
+
+        // ----------------------------------------------------------------
+        // ★ V16.9: 予測入力時のROM欄の色（完全一致=赤 と区別するためオレンジ）
+        // ----------------------------------------------------------------
+        function setRomFuzzyHighlight(on) {
+            ['rom-1', 'rom-3'].forEach(function (id) {
+                const el = document.getElementById(id);
+                if (!el) return;
+                if (on) {
+                    // ★ V17.0: バナー(紫)と色を揃える。完全一致=赤 との区別を維持
+                    el.style.backgroundColor = '#f5f3ff';
+                    el.style.borderColor = '#7c3aed';
+                    el.style.borderWidth = '2px';
+                    el.style.borderStyle = 'solid';
+                } else {
+                    el.style.backgroundColor = '';
+                    el.style.borderColor = '';
+                    el.style.borderWidth = '';
+                    el.style.borderStyle = '';
+                }
+            });
+        }
+
+        // ----------------------------------------------------------------
+        // ★ V16.9: 予測入力の状態を全部クリア（次の台へ／主基板なし／復元時）
+        // ----------------------------------------------------------------
+        function clearFuzzyRomState() {
+            fuzzyFilledRom = null;
+            fuzzyMatchedQr = null;
+            setRomFuzzyNote(null);
+            setRomFuzzyHighlight(false);
+        }
+
+        // ----------------------------------------------------------------
+        // ★ V16.9: 相似度80%超の過去QRからROMを予測入力
+        //   ・完全一致でヒットしなかったときだけ呼ぶ
+        //   ・予測入力した場合 true / しなかった場合 false を返す
+        //   ・false のときROM欄は一切触らない＝従来どおり前回入力値が残る
+        // ----------------------------------------------------------------
+        function applyRomFromFuzzyHistory(mainBoardQr) {
+            clearFuzzyRomState();
+            if (!FUZZY_ENABLED) return false;
+
+            const hit = findFuzzyRomHistory(mainBoardQr);
+            if (!hit) return false;
+
+            // 相似度を小数第1位までのパーセント表記に
+            const pct = (Math.round(hit.sim * 1000) / 10).toFixed(1);
+
+            const m = hit.rom.match(ROM_VALUE_PATTERN);
+            if (!m) return false;
+
+            const r1   = m[1];
+            const type = m[2];
+            const r3   = (type === "KY") ? (m[3] || "") : "";
+
+            setRomTypeWithRom3(type);   // KY/EAI切替（EAIならROM③クリア込み）
+
+            const rom1 = document.getElementById('rom-1');
+            const rom3 = document.getElementById('rom-3');
+            if (rom1) rom1.value = r1;
+            if (rom3) rom3.value = r3;
+
+            // 予測値を記憶（ROM確定時の判定・表示に使用）
+            fuzzyFilledRom = hit.rom;
+            fuzzyMatchedQr = hit.qr;
+
+            // ★ V17.1: 「同じ相似度の候補が…」の注記は表示しない（バナーを最小限に保つ）
+            //   同率候補の件数・ROM種類数は hit.tieTotal / hit.romVariants に入っているので
+            //   将来また出したくなったらここで組み立てて本文に足すだけで済む
+            // ★ V17.2: 表示は指定の2行のみ。
+            //   一致度・照合元QRは pct / hit.qr / hit.rom に入っているので、
+            //   また出したくなったらこの文字列に足すだけで済む。
+            setRomFuzzyNote(
+                '🤖 過去データからROMを予測しました。<br>' +
+                '完全一致の実績ではありません。必ず実物と照合してください。'
+            );
+            setRomFuzzyHighlight(true);
+            showScanToast('🤖 過去データからROMを予測（要照合）');
+            return true;
+        }
+
         // ★ V15.6: 過去取得済み自動入力時の見た目（赤文字＋入力欄の色）を一括切替
         function setRomHistoryHighlight(on) {
             const note = document.getElementById('rom-history-note');
@@ -1602,6 +1909,7 @@
             // ★ V15.6/V15.6: 毎回リセット（前の台の自動入力状態・赤文字・欄の色を持ち越さない）
             autoFilledRom = null;
             setRomHistoryHighlight(false);
+            clearFuzzyRomState(); // ★ V16.9: 予測入力の表示・状態も毎回リセット
 
             const romValue = lookupRomHistory(mainBoardQr);
             if (!romValue) return false;
@@ -1631,6 +1939,50 @@
 
         function isSuspiciousMainBoardValue(value) {
             return typeof value === "string" && /^\d{6}$/.test(value);
+        }
+
+        // ================================================================
+        // ★ V17.4: 主基板QRの「読み取りミス」を確認画面で警告
+        //   背景:
+        //     履歴xlsx 5,264行を調べたところ、誤スキャン由来のQRが20件混入していた
+        //       例) 94270 / 97410（数字だけ）
+        //           09752A / 0974K0 / 0973G0（途中まで）
+        //           G44CY3E61A / GCB8RPGCTE / N19D74DD22（別のQRを読んだ）
+        //           BBN1R251003W6K220203 / P2573002172030DM0683（20桁）
+        //           23 0225096 / 12 0047000（空白混入）
+        //           AG0233809 / AB0514785 / 1O26017652〜55（形式ズレ）
+        //     → 入口で気づけるように、読んだ直後の確認画面で赤警告を出す。
+        //
+        //   方針:
+        //     ・警告のみ。「OK」を押せば従来どおり登録できる
+        //       （新機種で本当に新しい形式が出た場合に現場が止まらないようにするため）
+        //     ・判定は V17.3 の mainboardQrShape()（形式A=13桁 / 形式B=「/」あり10桁）
+        //     ・MAINBOARD_SHAPE_WARN = false でこの警告だけOFFにできる
+        // ================================================================
+        const MAINBOARD_SHAPE_WARN = true;
+
+        const MAINBOARD_SHAPE_WARN_HTML =
+            '⚠️ 主基板QRの形式が正しくありません<br>' +
+            '<span style="font-size:15px;">読み取りミスの可能性があります。<br>' +
+            '「戻る」で もう一度読み取ってください。<br>' +
+            '実物のQRがこの表記どおりなら「OK」で進めます。</span>';
+
+        // 確認画面に出す警告を決める
+        //   戻り値 {warn:true/false, msg:HTML or null}
+        //     ① 6桁の数字     → 従来の「台番号と誤読していませんか？」（msg=null＝既定文言）
+        //     ② 形式に不一致  → 上記の形式警告
+        //     ③ 正常          → 警告なし
+        function mainboardConfirmWarning(value) {
+            if (isSuspiciousMainBoardValue(value)) return { warn: true, msg: null };
+
+            if (MAINBOARD_SHAPE_WARN) {
+                const qs = normalizeQrKey(value);
+                // 「なし」（主基板なし）は skipStep 経由なのでここには来ないが念のため除外
+                if (qs && value !== "なし" && !mainboardQrShape(qs)) {
+                    return { warn: true, msg: MAINBOARD_SHAPE_WARN_HTML };
+                }
+            }
+            return { warn: false, msg: null };
         }
 
         function focusRomInput() {
@@ -2039,8 +2391,9 @@
                 playScanBeep();
                 pendingValue = value;
 
-                const isWarning = isSuspiciousMainBoardValue(value);
-                showConfirmation(value, isWarning);
+                // ★ V17.4: 6桁誤読 or 形式不一致なら赤警告付きで確認表示
+                const w = mainboardConfirmWarning(value);
+                showConfirmation(value, w.warn, w.msg);
                 return;
             }
 
@@ -2109,8 +2462,14 @@
                 currentData.mainBoardId = pendingValue;
                 const typeMatched = applyRomTypeFromMainBoard(pendingValue); // ★ V13.8: KY/EAI初期値を自動設定（false=未知タイプ）
                 const histHit = applyRomFromHistory(pendingValue);           // ★ V15.0: 過去履歴ヒット時はROM①③も自動入力（タイプも上書き）
+
+                // ★ V16.9: 完全一致が無い場合のみ、相似度80%超の類似QRからROMを予測入力
+                //   予測もできなければROM欄は触らない＝従来どおり前回入力値がそのまま残る
+                const fuzzyHit = histHit ? false : applyRomFromFuzzyHistory(pendingValue);
+
                 // ★ V16.3: 判別マップにも過去履歴にも無い＝過去に例の無い主基板QR → 赤文字警告
-                setUnknownMainboardNote(!typeMatched && !histHit);
+                // ★ V16.9: 類似QRから予測できた場合はオレンジのバナーで案内するため赤文字は出さない
+                setUnknownMainboardNote(!typeMatched && !histHit && !fuzzyHit);
                 currentStep = 3;
                 updateUI();
                 focusRomInput();
@@ -2377,7 +2736,14 @@
             }
 
             pendingValue = val;
-            showConfirmation(val);
+
+            // ★ V17.4: 主基板QRを手入力した場合も形式チェックして警告
+            if (currentStep === 2) {
+                const w = mainboardConfirmWarning(val);
+                showConfirmation(val, w.warn, w.msg);
+            } else {
+                showConfirmation(val);
+            }
             document.getElementById('manual-input').value = "";
         }
 
@@ -2398,6 +2764,7 @@
                 autoFilledRom = null;
                 setRomHistoryHighlight(false);
                 setUnknownMainboardNote(false); // ★ V16.3: 未知主基板の警告もクリア
+                clearFuzzyRomState();           // ★ V16.9: 予測入力の表示・状態もクリア
                 currentStep = 3;
                 updateUI();
                 focusRomInput();
@@ -2430,6 +2797,7 @@
             currentStep = 1;
             currentData = { seals: [] };
             setUnknownMainboardNote(false); // ★ V16.3: 次の台へ移る際に未知主基板の警告をクリア
+            clearFuzzyRomState();           // ★ V16.9: 予測入力の表示・状態もクリア
 
             document.getElementById('seal-list-display').innerHTML = "";
             document.getElementById('manual-input').value = "";
