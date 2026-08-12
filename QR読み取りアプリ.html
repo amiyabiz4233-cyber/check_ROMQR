@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V17.6</title>
+    <title>点検スキャナー V17.7</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -598,7 +598,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V17.6</div>
+        <div class="version-tag">V17.7</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -610,7 +610,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V17.6</div>
+            <div class="version-tag">V17.7</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -1434,6 +1434,99 @@
             if (!/^\d+$/.test(value)) return false;
             const num = Number(value);
             return Number.isInteger(num) && num >= 0 && num <= 999999;
+        }
+
+        // ========================================
+        // ★ V17.7: 台番QRの店舗チェック
+        // ----------------------------------------
+        // 目的：
+        //   点検開始時に人間が入力した「店舗番号」と、
+        //   実際に読み取った台番QR（6桁数字）の先頭2桁＝店舗番号が
+        //   別の店舗を指している場合に赤警告を出す。
+        //   （店舗を切り替え忘れて別店舗の台をスキャンする事故を防ぐ）
+        //
+        // 重要：
+        //   1つの店舗が2つ以上の店舗番号を持つケースがある。
+        //   （例：01成田 は 01 と 81 の両方。09潮来 は 09 / 10 / 82）
+        //   したがって「番号が一致するか」ではなく
+        //   「同じ店舗（グループ）を指しているか」で判定する。
+        //
+        // 判定できないときは警告しない（＝従来どおり通す）。
+        //   ・台番QRが6桁でない（先頭2桁を店舗番号とみなせない）
+        //   ・店舗番号が対応表に無い（新店・カスタム番号など）
+        // ========================================
+
+        // 別番号 → 代表番号（＝店舗リストの基本の店舗番号）への変換表
+        //   ※ 出典: 店舗リスト.xlsx（Store_Number / Store_Name）
+        //   ※ 規則性は無い（+80 ではない）ので個別に持つ。店舗追加時はここに追記する。
+        const STORE_ALIAS_TO_BASE = {
+            "81": "01", // 01成田
+            "10": "09", // 09潮来（枝番）
+            "82": "09", // 09潮来
+            "84": "16", // 16木更津
+            "85": "18", // 18神栖
+            "86": "20", // 20多古
+            "87": "22", // 22葉山
+            "88": "23", // 23鹿嶋2
+            "89": "28", // 28八日市場
+            "90": "34", // 34奥野谷
+            "92": "43", // 43大和
+            "93": "44"  // 44淵野辺
+        };
+
+        // 店舗番号 → 代表番号（グループキー）。未知の番号はそのまま返す。
+        function storeGroupOf(id) {
+            if (!id) return null;
+            const key = String(id).trim();
+            if (!/^\d{1,2}$/.test(key)) return null;
+            const norm = (key.length === 1) ? ("0" + key) : key;   // "1" → "01"
+            return STORE_ALIAS_TO_BASE[norm] || norm;
+        }
+
+        // 代表番号 → 表示名（店舗リストに無ければ「店舗XX」と出す）
+        function storeNameOf(baseId) {
+            if (!baseId) return "";
+            return shopList[baseId] || ("店舗" + baseId);
+        }
+
+        // その店舗番号が対応表（shopList or 別番号表）に載っているか
+        //   載っていない番号は「判定不能」として警告を出さない
+        function isKnownStoreNumber(id) {
+            const norm = (String(id).length === 1) ? ("0" + id) : String(id);
+            return !!shopList[norm] || !!STORE_ALIAS_TO_BASE[norm];
+        }
+
+        // 台番QR（6桁数字）から店舗番号（先頭2桁）を取り出す。6桁以外は null。
+        function storeNoFromMachineId(value) {
+            if (typeof value !== "string" && typeof value !== "number") return null;
+            const v = String(value).trim();
+            if (!/^\d{6}$/.test(v)) return null;   // 6桁のときだけ店舗番号として扱う
+            return v.slice(0, 2);
+        }
+
+        // 台番の確認モーダルに出す警告を決める
+        //   戻り値: { warn: true/false, msg: 表示HTML or null }
+        function machineIdConfirmWarning(value) {
+            const scannedNo = storeNoFromMachineId(value);
+            if (!scannedNo) return { warn: false, msg: null };          // 6桁でない＝判定不能
+
+            // 入力側（人間が選んだ店舗）が未知なら判定しない
+            if (!shopId || !isKnownStoreNumber(shopId)) return { warn: false, msg: null };
+            // QR側の店舗番号が未知なら判定しない（新店・誤読の可能性もあるが従来どおり通す）
+            if (!isKnownStoreNumber(scannedNo)) return { warn: false, msg: null };
+
+            const gInput = storeGroupOf(shopId);
+            const gScan = storeGroupOf(scannedNo);
+            if (!gInput || !gScan || gInput === gScan) return { warn: false, msg: null }; // 同じ店舗＝OK
+
+            // ここまで来たら「別の店舗」の台番QR
+            return {
+                warn: true,
+                msg: "\u26a0 店舗が一致しません<br>" +
+                     "選択中：" + escHtml(shopId) + " " + escHtml(storeNameOf(gInput)) + "<br>" +
+                     "QR：" + escHtml(scannedNo) + " " + escHtml(storeNameOf(gScan)) + "<br>" +
+                     "この台を登録して良いですか？"
+            };
         }
 
         function isValidSealQr(value) {
@@ -2387,7 +2480,10 @@
 
                 playScanBeep();
                 pendingValue = value;
-                showConfirmation(value);
+
+                // ★ V17.7: 選択中の店舗と台番QRの店舗が違えば赤警告付きで確認表示
+                const mw = machineIdConfirmWarning(value);
+                showConfirmation(value, mw.warn, mw.msg);
                 return;
             }
 
@@ -2750,6 +2846,10 @@
             if (currentStep === 2) {
                 const w = mainboardConfirmWarning(val);
                 showConfirmation(val, w.warn, w.msg);
+            } else if (currentStep === 1) {
+                // ★ V17.7: 台番を手入力した場合も店舗の一致をチェック
+                const mw = machineIdConfirmWarning(val);
+                showConfirmation(val, mw.warn, mw.msg);
             } else {
                 showConfirmation(val);
             }
