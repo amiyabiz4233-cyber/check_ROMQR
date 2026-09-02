@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V17.9</title>
+    <title>点検スキャナー V18.0</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -283,13 +283,13 @@
             width: auto;
             margin: 0;
         }
-        /* 右：十字キー（3×3グリッド） */
+        /* 右：2×2キー（左列=←→ / 右列=↑↓）。幅を細くした分だけROM確定が広がる */
         .rom-dpad {
-            flex: 0 0 156px;
-            width: 156px;
+            flex: 0 0 108px;
+            width: 108px;
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            grid-template-rows: repeat(3, 1fr);
+            grid-template-columns: repeat(2, 1fr);
+            grid-template-rows: repeat(2, 1fr);
             gap: 4px;
         }
         .rom-dpad-btn {
@@ -308,25 +308,11 @@
             -webkit-tap-highlight-color: transparent;
         }
         .rom-dpad-btn:active { background: #e6e6e6; }
-        /* 各キーの位置（列/行を明示：上=中央上、左右=中央段、下=中央下） */
+        /* 各キーの位置（左上=← / 右上=↑ / 左下=→ / 右下=↓） */
+        .rom-dpad-left  { grid-column: 1; grid-row: 1; }
         .rom-dpad-up    { grid-column: 2; grid-row: 1; }
-        .rom-dpad-left  { grid-column: 1; grid-row: 2; }
-        .rom-dpad-right { grid-column: 3; grid-row: 2; }
-        .rom-dpad-down  { grid-column: 2; grid-row: 3; }
-        /* 中央：いま上下キーが効く欄（①/③）の表示 */
-        .rom-dpad-center {
-            grid-column: 2; grid-row: 2;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            font-weight: bold;
-            color: #2563eb;
-            background: #eef4ff;
-            border: 2px solid #c7d9ff;
-            border-radius: 8px;
-            box-sizing: border-box;
-        }
+        .rom-dpad-right { grid-column: 1; grid-row: 2; }
+        .rom-dpad-down  { grid-column: 2; grid-row: 2; }
         /* 選択中のROM欄を青枠で強調 */
         .rom-active-field {
             border-color: #2563eb !important;
@@ -661,7 +647,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V17.9</div>
+        <div class="version-tag">V18.0</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -673,7 +659,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V17.9</div>
+            <div class="version-tag">V18.0</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -734,20 +720,19 @@
                         >
                     </div>
                 </div>
-                <!-- ★ V17.9: 左=ROM確定ボタン / 右=十字キー
-                     ・← → … 操作する欄を ROM①/ROM③ に切り替え（入力済み文字は全選択）
-                     ・↑ ↓ … ROM①/ROM③ 共用。いま選択中の欄を +1 / -1 する
-                     ・中央の①/③表示で、いまどちらの欄を操作しているか分かるようにしている -->
+                <!-- ★ V18.0: 左=ROM確定ボタン(幅広) / 右=2×2キー
+                     配置）左列 … ← / →  ＝ 操作する欄を ROM①/ROM③ に切り替え（入力済み文字は全選択）
+                           右列 … ↑ / ↓  ＝ ROM①/ROM③ 共用。いま選択中の欄を +1 / -1
+                     選択中の欄は入力欄の青枠で示す（V17.9の中央①③表示は廃止） -->
                 <div class="rom-action-row">
                     <button id="btn-rom-confirm" class="btn-primary" onclick="handleManualInput()">ROM確定</button>
                     <div class="rom-dpad">
-                        <button type="button" class="rom-dpad-btn rom-dpad-up"
-                            onmousedown="event.preventDefault();"
-                            onclick="spinActiveRom(1)">↑</button>
                         <button type="button" class="rom-dpad-btn rom-dpad-left"
                             onmousedown="event.preventDefault();"
                             onclick="selectRomField('rom-1')">←</button>
-                        <div class="rom-dpad-center" id="rom-dpad-center">①</div>
+                        <button type="button" class="rom-dpad-btn rom-dpad-up"
+                            onmousedown="event.preventDefault();"
+                            onclick="spinActiveRom(1)">↑</button>
                         <button type="button" class="rom-dpad-btn rom-dpad-right"
                             onmousedown="event.preventDefault();"
                             onclick="selectRomField('rom-3')">→</button>
@@ -2417,10 +2402,6 @@
         function setActiveRomField(id) {
             if (id !== 'rom-1' && id !== 'rom-3') return;
             activeRomField = id;
-
-            // 十字キー中央の表示を更新
-            const c = document.getElementById('rom-dpad-center');
-            if (c) c.textContent = (id === 'rom-3') ? '③' : '①';
 
             // 選択中の欄だけ青枠にする
             ['rom-1', 'rom-3'].forEach(function (k) {
