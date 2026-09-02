@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V17.8</title>
+    <title>点検スキャナー V17.9</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -268,6 +268,69 @@
             min-height: 150px;
             font-size: 36px;
             padding: 20px;
+        }
+
+        /* ★ V17.9: ROM確定(左) + 十字キー(右) の横並び */
+        .rom-action-row {
+            display: flex;
+            gap: 8px;
+            align-items: stretch;
+            margin-top: 10px;
+        }
+        /* 左：ROM確定（幅は残り全部・高さは十字キーと揃える） */
+        .rom-action-row #btn-rom-confirm {
+            flex: 1 1 auto;
+            width: auto;
+            margin: 0;
+        }
+        /* 右：十字キー（3×3グリッド） */
+        .rom-dpad {
+            flex: 0 0 156px;
+            width: 156px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            grid-template-rows: repeat(3, 1fr);
+            gap: 4px;
+        }
+        .rom-dpad-btn {
+            padding: 0;
+            margin: 0;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            background: #fff;
+            color: #333;
+            font-size: 26px;
+            font-weight: bold;
+            line-height: 1;
+            box-sizing: border-box;
+            -webkit-user-select: none;
+            user-select: none;
+            -webkit-tap-highlight-color: transparent;
+        }
+        .rom-dpad-btn:active { background: #e6e6e6; }
+        /* 各キーの位置（列/行を明示：上=中央上、左右=中央段、下=中央下） */
+        .rom-dpad-up    { grid-column: 2; grid-row: 1; }
+        .rom-dpad-left  { grid-column: 1; grid-row: 2; }
+        .rom-dpad-right { grid-column: 3; grid-row: 2; }
+        .rom-dpad-down  { grid-column: 2; grid-row: 3; }
+        /* 中央：いま上下キーが効く欄（①/③）の表示 */
+        .rom-dpad-center {
+            grid-column: 2; grid-row: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            font-weight: bold;
+            color: #2563eb;
+            background: #eef4ff;
+            border: 2px solid #c7d9ff;
+            border-radius: 8px;
+            box-sizing: border-box;
+        }
+        /* 選択中のROM欄を青枠で強調 */
+        .rom-active-field {
+            border-color: #2563eb !important;
+            box-shadow: 0 0 0 2px rgba(37,99,235,0.25);
         }
 
         /* ★ 「登録して次の台へ」ボタンを約3倍の大きさに */
@@ -598,7 +661,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V17.8</div>
+        <div class="version-tag">V17.9</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -610,7 +673,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V17.8</div>
+            <div class="version-tag">V17.9</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -644,19 +707,11 @@
                             inputmode="text"
                             id="rom-1"
                             placeholder="数字/音声"
+                            onfocus="setActiveRomField('rom-1')"
                             onclick="this.select();"
                             onblur="handleRom1Blur()"
                             oninput="handleRom1Input(event)"
                         >
-                        <!-- ★ V16.6: ROM① スピンボタン（自動送り・自動確定は発火させない） -->
-                        <div class="rom-spin-row">
-                            <button type="button" class="rom-spin-btn"
-                                onmousedown="event.preventDefault();"
-                                onclick="spinRom('rom-1', -1)">↓</button>
-                            <button type="button" class="rom-spin-btn"
-                                onmousedown="event.preventDefault();"
-                                onclick="spinRom('rom-1', 1)">↑</button>
-                        </div>
                     </div>
                     <div style="flex:1; min-width:0;">
                         <button
@@ -673,30 +728,34 @@
                             inputmode="text"
                             id="rom-3"
                             placeholder="数字/音声(空欄可)"
+                            onfocus="setActiveRomField('rom-3')"
                             onclick="this.select();"
                             oninput="handleRom3Input(event)"
                         >
-                        <!-- ★ V16.6: ROM③ スピンボタン（自動確定は発火させない） -->
-                        <div class="rom-spin-row">
-                            <button type="button" class="rom-spin-btn"
-                                onmousedown="event.preventDefault();"
-                                onclick="spinRom('rom-3', -1)">↓</button>
-                            <button type="button" class="rom-spin-btn"
-                                onmousedown="event.preventDefault();"
-                                onclick="spinRom('rom-3', 1)">↑</button>
-                        </div>
                     </div>
                 </div>
-                <!-- ★ V16.6: ROM①/③ 選択切替（←=ROM① / →=ROM③、入力済み文字は全選択） -->
-                <div class="rom-nav-row">
-                    <button type="button" class="rom-nav-btn"
-                        onmousedown="event.preventDefault();"
-                        onclick="selectRomField('rom-1')">←</button>
-                    <button type="button" class="rom-nav-btn"
-                        onmousedown="event.preventDefault();"
-                        onclick="selectRomField('rom-3')">→</button>
+                <!-- ★ V17.9: 左=ROM確定ボタン / 右=十字キー
+                     ・← → … 操作する欄を ROM①/ROM③ に切り替え（入力済み文字は全選択）
+                     ・↑ ↓ … ROM①/ROM③ 共用。いま選択中の欄を +1 / -1 する
+                     ・中央の①/③表示で、いまどちらの欄を操作しているか分かるようにしている -->
+                <div class="rom-action-row">
+                    <button id="btn-rom-confirm" class="btn-primary" onclick="handleManualInput()">ROM確定</button>
+                    <div class="rom-dpad">
+                        <button type="button" class="rom-dpad-btn rom-dpad-up"
+                            onmousedown="event.preventDefault();"
+                            onclick="spinActiveRom(1)">↑</button>
+                        <button type="button" class="rom-dpad-btn rom-dpad-left"
+                            onmousedown="event.preventDefault();"
+                            onclick="selectRomField('rom-1')">←</button>
+                        <div class="rom-dpad-center" id="rom-dpad-center">①</div>
+                        <button type="button" class="rom-dpad-btn rom-dpad-right"
+                            onmousedown="event.preventDefault();"
+                            onclick="selectRomField('rom-3')">→</button>
+                        <button type="button" class="rom-dpad-btn rom-dpad-down"
+                            onmousedown="event.preventDefault();"
+                            onclick="spinActiveRom(-1)">↓</button>
+                    </div>
                 </div>
-                <button id="btn-rom-confirm" class="btn-primary" onclick="handleManualInput()">ROM確定</button>
                 <button type="button" id="rom-kb-toggle" class="btn-secondary" onmousedown="event.preventDefault();" onclick="toggleRomKbMode()">⌨ 数字入力</button>
                 <button class="btn-secondary" onclick="skipRomInput()">ROM入力スキップ</button>
             </div>
@@ -2347,6 +2406,41 @@
         }
 
         // ========================================
+        // ★ V17.9: 上下キーは ROM①/ROM③ 共用にしたので、
+        //   「いまどちらの欄を操作しているか」を1か所で持っておく。
+        //   ・← → を押したとき、欄をタップ／フォーカスしたときに更新される
+        //   ・初期値は ROM①（ROM入力に入ると①からの入力が基本のため）
+        // ========================================
+        let activeRomField = 'rom-1';
+
+        // 操作対象の欄を切り替える（見た目：欄の青枠 + 十字キー中央の①/③表示）
+        function setActiveRomField(id) {
+            if (id !== 'rom-1' && id !== 'rom-3') return;
+            activeRomField = id;
+
+            // 十字キー中央の表示を更新
+            const c = document.getElementById('rom-dpad-center');
+            if (c) c.textContent = (id === 'rom-3') ? '③' : '①';
+
+            // 選択中の欄だけ青枠にする
+            ['rom-1', 'rom-3'].forEach(function (k) {
+                const e = document.getElementById(k);
+                if (e) {
+                    if (k === id) e.classList.add('rom-active-field');
+                    else e.classList.remove('rom-active-field');
+                }
+            });
+        }
+
+        // 十字キーの ↑ / ↓ … 選択中の欄を +1 / -1（従来の spinRom をそのまま利用）
+        function spinActiveRom(delta) {
+            if (currentStep !== 3) return;
+            const id = (activeRomField === 'rom-3') ? 'rom-3' : 'rom-1';
+            setActiveRomField(id);   // 表示を確実に同期させる
+            spinRom(id, delta);
+        }
+
+        // ========================================
         // ★ V16.6: ←/→ ボタンで ROM①/ROM③ を選択（入力済み文字列は全選択）
         //   ・ボタンは onmousedown で preventDefault 済み＝キーボードを閉じない
         //   ・移動そのものが目的なので blur 由来の自動フォーカス移動は抑止
@@ -2356,6 +2450,9 @@
 
             const el = document.getElementById(id);
             if (!el) return;
+
+            // ★ V17.9: 上下キーの操作対象もこの欄に切り替える
+            setActiveRomField(id);
 
             // ★ blur起因の自動フォーカス移動(handleRom1Blur)を抑止
             romSpinGuard['rom-1'] = Date.now();
