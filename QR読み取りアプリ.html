@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V18.4</title>
+    <title>点検スキャナー V18.5</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -55,18 +55,18 @@
             min-height: 280px;
         }
 
-        /* ★ V18.3/18.4: 封印登録ボタン（カメラ映像に重ねる緑ボタン）
-              封印を1枚スキャンするまでは非表示。1枚読んだ時点から表示する。
-              位置は #reader-wrapper(position:relative) 基準の絶対配置。
-              左右 80px = 端10px + ライト60px + すき間10px なので
-              「左右のライトボタンのちょうど間」に収まる。 */
+        /* ★ V18.5: 封印登録ボタン（カメラ映像に重ねる緑ボタン）
+              上下2か所に同じものを出す。どちらを押しても動きは同じ。
+              封印を1枚スキャンするまでは非表示。 */
         .seal-register-btn {
             display: none;                 /* ★ 初期は非表示。JSが表示を切り替える */
             position: absolute;
-            top: 10px;
-            left: 80px;
+            left: 80px;                    /* 端10px + ライト60px + すき間10px */
             right: 80px;
-            height: 60px;
+            /* ★重要: 全体の button { width: 100% } に負けて right が無視され、
+                  右へはみ出す（V18.4で発生）。width:auto で left/right 指定を効かせる */
+            width: auto;
+            height: 60px;                  /* ライトボタンと同じ高さ */
             padding: 0;
             margin: 0;
             border: 2px solid #15803d;
@@ -80,9 +80,11 @@
             box-shadow: 0 2px 8px rgba(0,0,0,0.4);
             -webkit-tap-highlight-color: transparent;
         }
-        .seal-register-btn:active {
-            background-color: #16a34a;
-        }
+        .seal-register-btn:active { background-color: #16a34a; }
+
+        /* 上＝カメラ枠の上端 / 下＝左右のライトと同じ高さ（ライトとライトの間） */
+        #btn-seal-register-top    { top: 10px; }
+        #btn-seal-register-bottom { bottom: 10px; }
 
         .torch-btn {
             display: none;
@@ -676,7 +678,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V18.4</div>
+        <div class="version-tag">V18.5</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -688,7 +690,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V18.4</div>
+            <div class="version-tag">V18.5</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -700,8 +702,10 @@
                     <div id="reader"></div>
                     <button id="btn-torch" type="button" class="torch-btn" onclick="toggleTorch()" title="ライトON/OFF">💡</button>
                     <button id="btn-torch-left" type="button" class="torch-btn" onclick="toggleTorch()" title="ライトON/OFF">💡</button>
-                    <!-- ★ V18.3/18.4: 封印登録ボタン。封印を1枚読むまでは非表示（updateSealRegisterButton で制御） -->
-                    <button id="btn-seal-register" type="button" class="seal-register-btn" onclick="finishMachine()">封印登録</button>
+                    <!-- ★ V18.5: 封印登録ボタン（上・下の2か所）。封印を1枚読むまでは非表示。
+                         表示制御は updateSealRegisterButton() が一括で行う。 -->
+                    <button id="btn-seal-register-top"    type="button" class="seal-register-btn" onclick="finishMachine()">封印登録</button>
+                    <button id="btn-seal-register-bottom" type="button" class="seal-register-btn" onclick="finishMachine()">封印登録</button>
                 </div>
                 <button id="btn-skip" class="btn-secondary" style="display:none;" onclick="skipStep()">主基板/封印なし</button>
             </div>
@@ -2786,7 +2790,7 @@
             const titles = ["", "① 台番号スキャン", "② 主基板スキャン", "③ ROM入力", "④ 封印スキャン"];
             document.getElementById('status').innerText = titles[currentStep];
 
-            updateSealRegisterButton();   // ★ V18.3/18.4: 画面が変わったら封印登録ボタンの表示も合わせる
+            updateSealRegisterButton();   // ★ V18.5: 画面が変わったら封印登録ボタンの表示も合わせる
 
             // ★ V16.6: ステップ(=ページ)が切り替わったら必ず最上部へ戻す
             //    ROM入力欄フォーカス等と競合しないよう遅延リトライはしない
@@ -2803,25 +2807,27 @@
             if (!target) return;
             const seals = (currentData && currentData.seals) ? currentData.seals : [];
             target.innerHTML = seals.map(s => `<span class="seal-tag">${s}</span>`).join('');
-            updateSealRegisterButton();   // ★ V18.3/18.4: 封印の増減にあわせてボタンの表示も更新
+            updateSealRegisterButton();   // ★ V18.5: 封印の増減にあわせてボタンの表示も更新
         }
 
         // ========================================
-        // ★ V18.3/18.4: カメラに重ねた「封印登録」ボタンの表示切替
+        // ★ V18.5: カメラに重ねた「封印登録」ボタン（上・下の2つ）の表示切替
         //   出す条件（両方そろったときだけ）:
         //     ・④封印スキャンの画面である（currentStep === 4）
         //     ・封印が1枚以上スキャンされている
         //   → 押すと finishMachine()（画面下の「登録して次の台へ」と同じ動き）
-        //   ※ ①②③の画面や、封印0枚のうちは出さない＝誤タップで台が飛ぶのを防ぐ
+        //   ※ ①②③の画面や封印0枚のうちは出さない＝誤タップで台が飛ぶのを防ぐ
         // ========================================
-        function updateSealRegisterButton() {
-            const btn = document.getElementById('btn-seal-register');
-            if (!btn) return;
+        const SEAL_REGISTER_BTN_IDS = ['btn-seal-register-top', 'btn-seal-register-bottom'];
 
+        function updateSealRegisterButton() {
             const sealCount = (currentData && currentData.seals) ? currentData.seals.length : 0;
             const show = (currentStep === 4) && (sealCount > 0);
 
-            btn.style.display = show ? 'block' : 'none';
+            SEAL_REGISTER_BTN_IDS.forEach(function (id) {
+                const btn = document.getElementById(id);
+                if (btn) btn.style.display = show ? 'block' : 'none';
+            });
         }
 
         // ========================================
