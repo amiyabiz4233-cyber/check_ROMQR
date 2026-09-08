@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V18.2</title>
+    <title>点検スキャナー V18.4</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -53,6 +53,35 @@
         #reader {
             width: 100%;
             min-height: 280px;
+        }
+
+        /* ★ V18.3/18.4: 封印登録ボタン（カメラ映像に重ねる緑ボタン）
+              封印を1枚スキャンするまでは非表示。1枚読んだ時点から表示する。
+              位置は #reader-wrapper(position:relative) 基準の絶対配置。
+              左右 80px = 端10px + ライト60px + すき間10px なので
+              「左右のライトボタンのちょうど間」に収まる。 */
+        .seal-register-btn {
+            display: none;                 /* ★ 初期は非表示。JSが表示を切り替える */
+            position: absolute;
+            top: 10px;
+            left: 80px;
+            right: 80px;
+            height: 60px;
+            padding: 0;
+            margin: 0;
+            border: 2px solid #15803d;
+            border-radius: 12px;
+            background-color: #22c55e;     /* 緑 */
+            color: #ffffff;
+            font-size: 20px;
+            font-weight: bold;
+            line-height: 1;
+            z-index: 100;                  /* ライトボタンと同じ重なり順 */
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            -webkit-tap-highlight-color: transparent;
+        }
+        .seal-register-btn:active {
+            background-color: #16a34a;
         }
 
         .torch-btn {
@@ -647,7 +676,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V18.2</div>
+        <div class="version-tag">V18.4</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -659,7 +688,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V18.2</div>
+            <div class="version-tag">V18.4</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -671,6 +700,8 @@
                     <div id="reader"></div>
                     <button id="btn-torch" type="button" class="torch-btn" onclick="toggleTorch()" title="ライトON/OFF">💡</button>
                     <button id="btn-torch-left" type="button" class="torch-btn" onclick="toggleTorch()" title="ライトON/OFF">💡</button>
+                    <!-- ★ V18.3/18.4: 封印登録ボタン。封印を1枚読むまでは非表示（updateSealRegisterButton で制御） -->
+                    <button id="btn-seal-register" type="button" class="seal-register-btn" onclick="finishMachine()">封印登録</button>
                 </div>
                 <button id="btn-skip" class="btn-secondary" style="display:none;" onclick="skipStep()">主基板/封印なし</button>
             </div>
@@ -1584,11 +1615,11 @@
         // ========================================
         // ★ 主基板QR → ROMタイプ(KY/EAI)初期値の自動設定
         // ★ V18.2: 更新版「今までの主基板QRとROMの履歴.xlsx」(全6831行／有効6469行→辞書6175件)で全件再検証。
-        //   判定精度 99.74%（正解6030 / 誤り16 / 未知0）。
-        //   SLASH 38件・PREFIX4 65件、どちらも件数・内容ともV17.8から変更なし。
-        //   残る誤差は F50(EAI 75:KY 7)・H50(KY 213:EAI 3)・P2EX(KY 15:EAI 6) の混在機種のみ。
-        //   ★今回からxlsxのC列「取得日」を使用。取得日が基準日の6年以上前の行はHTMLに含めない
-        //     （2026-09-02時点では該当0行）。同一QRの最新実績は「行順」ではなく「取得日」で決める。
+        //   判定精度 99.74%（正解6159 / 誤り16 / 未知0）。
+        //   SLASH 38件・PREFIX4 65件、どちらも件数はV17.8から変更なし。
+        //   残る誤差は F50(EAI 75:KY 7)・H50(KY 218:EAI 3)・P2EX(KY 15:EAI 6) の混在機種のみ。
+        //   ★V18.1からxlsxのC列「取得日」を使用。取得日が基準日の6年以上前の行はHTMLに含めない
+        //     （2026-09-07時点では該当0行）。同一QRの最新実績は「行順」ではなく「取得日」で決める。
         // ★ V17.8: 更新版「今までの主基板QRとROMの履歴.xlsx」(全6308行／有効5967行→辞書5761件)で全件再検証。
         //   判定精度 99.74%（正解5746 / 誤り15 / 未知0）。
         //   SLASHマップに "Z50":"KY" を新規追加（37→38件）。PREFIX4(65件)は内容変更なし。
@@ -1690,7 +1721,7 @@
         //   ・MAINBOARD_ROM_HISTORY: 「今までの主基板QRとROMの履歴.xlsx」全件より生成
         //     （★V18.2: 6175件・同一QR重複は「取得日が最新」の行を採用・QR形式NGの20件は除外）
         //     内訳: 全6831行 − 主基板なし/空53 − QR形式NG20 − ROM不正/NULL289 − 取得日6年超0 = 有効6469行 → 重複排除後 6175件
-        //     ※V17.8(5761件)からの差分は「新規285件のみ」。ROM値の変更・消失は0件。
+        //     ※V18.1(6046件)からの差分は「新規129件のみ」。ROM値の変更・消失は0件。
         //     （★V17.8: 5761件・同一QR重複は最新行を採用・QR形式NGの20件は除外）
         //     内訳: 全6308行 − 主基板なし/空53 − QR形式NG20 − ROM不正/NULL268 = 有効5967行 → 重複排除後 5761件
         //     ※V17.6(5335件)からの差分は「新規426件のみ」。ROM値の変更・消失は0件。
@@ -2755,6 +2786,8 @@
             const titles = ["", "① 台番号スキャン", "② 主基板スキャン", "③ ROM入力", "④ 封印スキャン"];
             document.getElementById('status').innerText = titles[currentStep];
 
+            updateSealRegisterButton();   // ★ V18.3/18.4: 画面が変わったら封印登録ボタンの表示も合わせる
+
             // ★ V16.6: ステップ(=ページ)が切り替わったら必ず最上部へ戻す
             //    ROM入力欄フォーカス等と競合しないよう遅延リトライはしない
             if (lastRenderedStep !== currentStep) {
@@ -2770,6 +2803,25 @@
             if (!target) return;
             const seals = (currentData && currentData.seals) ? currentData.seals : [];
             target.innerHTML = seals.map(s => `<span class="seal-tag">${s}</span>`).join('');
+            updateSealRegisterButton();   // ★ V18.3/18.4: 封印の増減にあわせてボタンの表示も更新
+        }
+
+        // ========================================
+        // ★ V18.3/18.4: カメラに重ねた「封印登録」ボタンの表示切替
+        //   出す条件（両方そろったときだけ）:
+        //     ・④封印スキャンの画面である（currentStep === 4）
+        //     ・封印が1枚以上スキャンされている
+        //   → 押すと finishMachine()（画面下の「登録して次の台へ」と同じ動き）
+        //   ※ ①②③の画面や、封印0枚のうちは出さない＝誤タップで台が飛ぶのを防ぐ
+        // ========================================
+        function updateSealRegisterButton() {
+            const btn = document.getElementById('btn-seal-register');
+            if (!btn) return;
+
+            const sealCount = (currentData && currentData.seals) ? currentData.seals.length : 0;
+            const show = (currentStep === 4) && (sealCount > 0);
+
+            btn.style.display = show ? 'block' : 'none';
         }
 
         // ========================================
