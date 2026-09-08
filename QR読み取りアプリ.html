@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V18.5</title>
+    <title>点検スキャナー V18.7</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -339,10 +339,15 @@
             -webkit-tap-highlight-color: transparent;
         }
         .rom-dpad-btn:active { background: #e6e6e6; }
-        /* 各キーの位置（左上=← / 右上=↑ / 左下=→ / 右下=↓） */
-        .rom-dpad-left  { grid-column: 1; grid-row: 1; }
+        /* 各キーの位置（左列=欄の切替(1つ) / 右上=↑ / 右下=↓）
+           ★ V18.7: 左列の ← と → を1つのボタンに統合。
+              grid-row: 1 / span 2 で上下2マスをまたぐので、
+              大きさは旧←＋旧→（すき間4pxを含む）とぴったり同じになる。
+              表示は「次に移動する先」を示す:
+                ROM①にカーソル → 「→」（押すとROM③へ）
+                ROM③にカーソル → 「←」（押すとROM①へ） */
+        .rom-dpad-swap  { grid-column: 1; grid-row: 1 / span 2; font-size: 32px; }
         .rom-dpad-up    { grid-column: 2; grid-row: 1; }
-        .rom-dpad-right { grid-column: 1; grid-row: 2; }
         .rom-dpad-down  { grid-column: 2; grid-row: 2; }
         /* 選択中のROM欄を青枠で強調 */
         .rom-active-field {
@@ -358,6 +363,60 @@
         }
 
         /* ★ 戻る確認（赤警告）オーバーレイ */
+        /* ★ V18.6: 封印登録の確認モーダル（誤タップ防止）
+              カメラに重ねた緑ボタンは指が当たりやすいので、
+              押しても即座には登録せず、必ずこの確認を挟む。 */
+        #seal-confirm-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.9);
+            z-index: 10004;              /* 他のモーダルより上 */
+            justify-content: center;
+            align-items: center;
+        }
+
+        #seal-confirm-modal {
+            background: #fff;
+            width: 90%;
+            max-width: 420px;
+            padding: 25px 20px;
+            border-radius: 20px;
+            text-align: center;
+            box-sizing: border-box;
+            transform: translateY(-12vh); /* 既存モーダルと同じく少し上へ */
+        }
+
+        #seal-confirm-modal .seal-confirm-title {
+            font-size: 22px;
+            font-weight: bold;
+            line-height: 1.5;
+            margin-bottom: 14px;
+        }
+
+        /* 何を登録しようとしているのかを必ず出す（台番・封印枚数の取り違え防止） */
+        #seal-confirm-detail {
+            text-align: left;
+            font-size: 15px;
+            line-height: 1.8;
+            background: #f5f5f5;
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin-bottom: 20px;
+        }
+        #seal-confirm-detail b { font-size: 17px; }
+
+        /* 既存の確認モーダルと同じ並び：上=戻る（小・グレー）/ 下=OK（大・緑） */
+        #seal-confirm-modal .btn-success {
+            min-height: 150px;
+            font-size: 40px;
+            padding: 20px;
+            margin-top: 10px;
+        }
+
         #back-confirm-overlay {
             display: none;
             position: fixed;
@@ -625,6 +684,16 @@
         </div>
     </div>
 
+    <!-- ★ V18.6: 封印登録の確認（誤タップ防止）。カメラ上の緑ボタンから呼ばれる -->
+    <div id="seal-confirm-overlay">
+        <div id="seal-confirm-modal">
+            <div class="seal-confirm-title">この内容で登録して<br>次の台へ進みますか？</div>
+            <div id="seal-confirm-detail"></div>
+            <button class="btn-secondary" onclick="cancelSealRegister()">戻る</button>
+            <button class="btn-success" onclick="confirmSealRegister()">OK</button>
+        </div>
+    </div>
+
     <!-- ★ 戻る確認（赤警告） -->
     <div id="back-confirm-overlay">
         <div id="back-confirm-modal">
@@ -678,7 +747,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V18.5</div>
+        <div class="version-tag">V18.7</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -690,7 +759,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V18.5</div>
+            <div class="version-tag">V18.7</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -704,8 +773,8 @@
                     <button id="btn-torch-left" type="button" class="torch-btn" onclick="toggleTorch()" title="ライトON/OFF">💡</button>
                     <!-- ★ V18.5: 封印登録ボタン（上・下の2か所）。封印を1枚読むまでは非表示。
                          表示制御は updateSealRegisterButton() が一括で行う。 -->
-                    <button id="btn-seal-register-top"    type="button" class="seal-register-btn" onclick="finishMachine()">封印登録</button>
-                    <button id="btn-seal-register-bottom" type="button" class="seal-register-btn" onclick="finishMachine()">封印登録</button>
+                    <button id="btn-seal-register-top"    type="button" class="seal-register-btn" onclick="askSealRegister()">封印登録</button>
+                    <button id="btn-seal-register-bottom" type="button" class="seal-register-btn" onclick="askSealRegister()">封印登録</button>
                 </div>
                 <button id="btn-skip" class="btn-secondary" style="display:none;" onclick="skipStep()">主基板/封印なし</button>
             </div>
@@ -755,22 +824,23 @@
                         >
                     </div>
                 </div>
-                <!-- ★ V18.0: 左=ROM確定ボタン(幅広) / 右=2×2キー
-                     配置）左列 … ← / →  ＝ 操作する欄を ROM①/ROM③ に切り替え（入力済み文字は全選択）
+                <!-- ★ V18.0: 左=ROM確定ボタン(幅広) / 右=キー
+                     配置）左列 … 欄の切替ボタン1つ（★V18.7で ← と → を統合。上下2マスぶんの大きさ）
+                             ROM①にカーソル → 「→」表示、押すとROM③へ
+                             ROM③にカーソル → 「←」表示、押すとROM①へ
+                             （移動先の欄は入力済み文字を全選択する）
                            右列 … ↑ / ↓  ＝ ROM①/ROM③ 共用。いま選択中の欄を +1 / -1
                      選択中の欄は入力欄の青枠で示す（V17.9の中央①③表示は廃止） -->
                 <div class="rom-action-row">
                     <button id="btn-rom-confirm" class="btn-primary" onclick="handleManualInput()">ROM確定</button>
                     <div class="rom-dpad">
-                        <button type="button" class="rom-dpad-btn rom-dpad-left"
+                        <!-- ★ V18.7: ←/→ を1つに統合。ラベルはカーソル位置で切り替わる -->
+                        <button type="button" id="rom-dpad-swap" class="rom-dpad-btn rom-dpad-swap"
                             onmousedown="event.preventDefault();"
-                            onclick="selectRomField('rom-1')">←</button>
+                            onclick="toggleRomFieldSide()">→</button>
                         <button type="button" class="rom-dpad-btn rom-dpad-up"
                             onmousedown="event.preventDefault();"
                             onclick="spinActiveRom(1)">↑</button>
-                        <button type="button" class="rom-dpad-btn rom-dpad-right"
-                            onmousedown="event.preventDefault();"
-                            onclick="selectRomField('rom-3')">→</button>
                         <button type="button" class="rom-dpad-btn rom-dpad-down"
                             onmousedown="event.preventDefault();"
                             onclick="spinActiveRom(-1)">↓</button>
@@ -1247,6 +1317,7 @@
             });
 
             handleRomTypeChange();
+            setActiveRomField('rom-1');   // ★ V18.7: 起動時の青枠と矢印(→)を初期同期
             updateAutosaveDisplay();
             applyRomKbMode(); // ★ 保存済みのROMキーボードモードを反映
             setupRomVoiceGuards(); // ★ V14.4: 音声入力の変換中フラグ用リスナー登録
@@ -2455,6 +2526,27 @@
                     else e.classList.remove('rom-active-field');
                 }
             });
+
+            updateRomSwapButton();   // ★ V18.7: 切替ボタンの矢印の向きも合わせる
+        }
+
+        // ========================================
+        // ★ V18.7: 欄の切替ボタン（←/→を1つに統合）
+        //   ラベルは「押すとどっちへ行くか」を示す:
+        //     いまROM① → 「→」（押すとROM③へ）
+        //     いまROM③ → 「←」（押すとROM①へ）
+        //   ※ setActiveRomField から必ず呼ばれるので、表示とカーソルがズレない
+        // ========================================
+        function updateRomSwapButton() {
+            const btn = document.getElementById('rom-dpad-swap');
+            if (!btn) return;
+            btn.innerText = (activeRomField === 'rom-3') ? '←' : '→';
+        }
+
+        // 押したら反対側の欄へ移動する（移動先は全選択される）
+        function toggleRomFieldSide() {
+            if (currentStep !== 3) return;
+            selectRomField(activeRomField === 'rom-3' ? 'rom-1' : 'rom-3');
         }
 
         // 十字キーの ↑ / ↓ … 選択中の欄を +1 / -1（従来の spinRom をそのまま利用）
@@ -2593,6 +2685,14 @@
         }
 
         function handleScannedText(value) {
+            // ★ V18.6: 封印登録の確認モーダル表示中もスキャンを無視
+            //   （背後で封印が増えると、モーダルに出している枚数と実際がズレるため）
+            const sealOv = document.getElementById('seal-confirm-overlay');
+            if (sealOv && sealOv.style.display === 'flex') {
+                html5QrCode && html5QrCode.resume && html5QrCode.resume();
+                return;
+            }
+
             // ★ V14.9: 修正モーダル表示中はスキャンを無視（背後での誤登録防止）
             if (isEditOpen()) {
                 html5QrCode && html5QrCode.resume && html5QrCode.resume();
@@ -2719,6 +2819,48 @@
                 saveState(); // ★
                 return;
             }
+        }
+
+        // ========================================
+        // ★ V18.6: 封印登録の確認モーダル
+        //   カメラに重ねた緑ボタンは誤タップしやすいので、押しても即登録しない。
+        //   「OK」で finishMachine()（＝登録して次の台へ）、「戻る」で何もせず閉じる。
+        //   何を登録しようとしているのか（台番・主基板・ROM・封印枚数）を必ず出す。
+        // ========================================
+        function askSealRegister() {
+            // 念のため二重チェック。④以外／封印0枚では開かない
+            if (currentStep !== 4) return;
+            const seals = (currentData && currentData.seals) ? currentData.seals : [];
+            if (seals.length === 0) return;
+
+            const detail = document.getElementById('seal-confirm-detail');
+            if (detail) {
+                detail.innerHTML =
+                    '台番　：<b>' + escHtml(currentData.machineId || "-") + '</b><br>' +
+                    '主基板：' + escHtml(currentData.mainBoardId || "-") + '<br>' +
+                    'ROM　：' + escHtml(currentData.romId || "-") + '<br>' +
+                    '封印　：<b>' + seals.length + '枚</b><br>' +
+                    seals.map(function (v) { return '　・' + escHtml(v); }).join('<br>');
+            }
+
+            document.getElementById('seal-confirm-overlay').style.display = 'flex';
+            scrollToTopInstant();
+        }
+
+        function closeSealConfirm() {
+            const ov = document.getElementById('seal-confirm-overlay');
+            if (ov) ov.style.display = 'none';
+        }
+
+        // OK → 登録して次の台へ
+        function confirmSealRegister() {
+            closeSealConfirm();
+            finishMachine();
+        }
+
+        // 戻る → 何もしない（封印スキャンの画面に留まる）
+        function cancelSealRegister() {
+            closeSealConfirm();
         }
 
         // ★ 赤い確認画面で実行する「戻る処理」を保持
