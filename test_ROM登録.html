@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V19.7</title>
+    <title>点検スキャナー V19.8</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -648,20 +648,24 @@
             margin-top: 12px;
         }
 
-        /* ★ V19.7: 修正画面の封印スキャンまわり
+        /* ★ V19.8: 修正画面のスキャンまわり
              注意）このアプリは button/input に width:100% が効いているため、
              横並びは flex:1 1 0（=basisを0にしてwidth:100%を無効化）＋min-width:0 で組む。 */
-        .edit-seal-btn-row {
+        .edit-field-row {
             display: flex;
             gap: 6px;
-            margin-top: 6px;
+            align-items: stretch;
         }
-        .edit-seal-btn {
+        .edit-field-row input {
             flex: 1 1 0;
             min-width: 0;
-            margin-top: 0 !important;
-            font-size: 15px;
-            padding: 12px 4px;
+        }
+        .edit-pen-btn {
+            flex: 0 0 52px;      /* ✏ボタンは固定幅。width:100%に負けないようbasisで指定 */
+            width: 52px !important;
+            margin-top: 5px !important;
+            padding: 0;
+            font-size: 20px;
         }
         #edit-scan-area {
             margin-top: 10px;
@@ -669,6 +673,13 @@
             border-radius: 12px;
             padding: 8px;
             background: #f0fdf4;
+        }
+        #edit-scan-target-label {
+            text-align: center;
+            font-weight: bold;
+            font-size: 16px;
+            color: #166534;
+            margin-bottom: 6px;
         }
         /* カメラ映像。💡ボタンを重ねるので position:relative の枠を用意する */
         #edit-reader-wrapper {
@@ -699,6 +710,7 @@
             font-size: 15px;
             color: #166534;
             margin: 8px 0;
+            min-height: 20px;
         }
 
         table {
@@ -808,30 +820,43 @@
     <div id="edit-overlay">
         <div id="edit-modal">
             <div style="font-weight:bold; font-size:18px; text-align:center;">📝 登録データの修正</div>
-            <label>台番</label>
-            <input type="text" inputmode="numeric" id="edit-machine">
-            <label>主基板</label>
-            <input type="text" id="edit-mainboard">
-            <label>ROM</label>
-            <input type="text" id="edit-rom">
-            <label>封印（複数は / 区切り）</label>
-            <!-- ★ V19.7: 封印欄をタップ＝カメラ起動（readonlyにしてキーボードを出さない）。
-                   文字を直したいときは下の「✏ 手入力」でreadonlyを外す。 -->
-            <input type="text" id="edit-seals" readonly onclick="openEditSealScan()">
-            <div class="edit-seal-btn-row">
-                <button type="button" class="btn-primary edit-seal-btn" onclick="openEditSealScan()">📷 封印をスキャン</button>
-                <button type="button" class="btn-secondary edit-seal-btn" onclick="enableEditSealsManual()">✏ 手入力</button>
-            </div>
 
-            <!-- ★ V19.7: 修正画面専用のカメラ。本体スキャナーとは別インスタンスで、
-                   開くときに本体を止める（端末はカメラを同時に2つ使えないため）。 -->
+            <!-- ★ V19.8: 修正画面専用のカメラ（台番／主基板／封印で共用）。
+                   本体スキャナーとは別インスタンスで、開くとき本体を止める
+                   （端末はカメラを同時に2つ使えないため）。
+                   どの欄を読んでいるか分かるよう、上にラベルを出す。 -->
             <div id="edit-scan-area" style="display:none;">
+                <div id="edit-scan-target-label">📷 読み取り中</div>
                 <div id="edit-reader-wrapper">
                     <div id="edit-reader"></div>
                     <button id="btn-edit-torch" type="button" class="torch-btn" onclick="toggleEditTorch()" title="ライトON/OFF">💡</button>
                 </div>
-                <div id="edit-scan-count">読み取った封印：0枚</div>
-                <button type="button" class="btn-success" onclick="closeEditSealScan()">スキャン終了</button>
+                <div id="edit-scan-count"></div>
+                <button type="button" class="btn-success" onclick="closeEditScan()">スキャン終了</button>
+            </div>
+
+            <!-- ★ V19.8: 台番・主基板・封印の3欄は「タップ＝カメラ起動」。
+                   readonly にしてキーボードを出さない。手で直すときは右の ✏ ボタン。 -->
+            <label>台番（タップでカメラ）</label>
+            <div class="edit-field-row">
+                <input type="text" inputmode="numeric" id="edit-machine" readonly onclick="openEditScan('machine')">
+                <button type="button" class="btn-secondary edit-pen-btn" onclick="enableEditManual('edit-machine')" title="手入力">✏</button>
+            </div>
+
+            <label>主基板（タップでカメラ）</label>
+            <div class="edit-field-row">
+                <input type="text" id="edit-mainboard" readonly onclick="openEditScan('mainboard')">
+                <button type="button" class="btn-secondary edit-pen-btn" onclick="enableEditManual('edit-mainboard')" title="手入力">✏</button>
+            </div>
+
+            <!-- ROMはQRが無いので従来どおり手入力のみ -->
+            <label>ROM</label>
+            <input type="text" id="edit-rom">
+
+            <label>封印（タップでカメラ／複数は / 区切り）</label>
+            <div class="edit-field-row">
+                <input type="text" id="edit-seals" readonly onclick="openEditScan('seals')">
+                <button type="button" class="btn-secondary edit-pen-btn" onclick="enableEditManual('edit-seals')" title="手入力">✏</button>
             </div>
 
             <button class="btn-success" onclick="saveEdit()">保存</button>
@@ -842,7 +867,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V19.7</div>
+        <div class="version-tag">V19.8</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -854,7 +879,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V19.7</div>
+            <div class="version-tag">V19.8</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -3364,10 +3389,13 @@
             document.getElementById('edit-machine').value = d.machineId || "";
             document.getElementById('edit-mainboard').value = d.mainBoardId || "";
             document.getElementById('edit-rom').value = d.romId || "";
-            const sealInput = document.getElementById('edit-seals');
-            sealInput.value = d.sealsText || "";
-            // ★ V19.7: 開くたびに「タップ＝カメラ」の状態に戻す（前回手入力にしたままにしない）
-            sealInput.readOnly = true;
+            document.getElementById('edit-seals').value = d.sealsText || "";
+            // ★ V19.8: 開くたびに3欄とも「タップ＝カメラ」の状態に戻す
+            //   （前回 ✏ 手入力にしたまま次の台でもキーボードが出る、を防ぐ）
+            EDIT_SCAN_FIELDS.forEach(function (id) {
+                const el = document.getElementById(id);
+                if (el) el.readOnly = true;
+            });
             document.getElementById('edit-scan-area').style.display = 'none';
             document.getElementById('edit-overlay').style.display = 'flex';
             scrollElTop('edit-modal');  // ★ V16.6
@@ -3375,23 +3403,31 @@
         }
 
         function closeEdit() {
-            // ★ V19.7: 修正画面のカメラが開いていれば必ず止める（止め忘れ＝本体カメラが復帰しない）
-            closeEditSealScan();
+            // ★ V19.8: 修正画面のカメラが開いていれば必ず止める（止め忘れ＝本体カメラが復帰しない）
+            closeEditScan();
             document.getElementById('edit-overlay').style.display = 'none';
             scrollToTopInstant(); // ★ V16.6
             editIndex = -1;
         }
 
         // ========================================
-        // ★ V19.7: 「登録データの修正」画面での封印スキャン
-        //   ねらい）修正のたびに封印を手で打ち直すのが大変なので、
-        //           封印欄をタップしたらその場でカメラを出して読み足せるようにする。
-        //   注意点）端末はカメラを同時に2つ使えない。開くとき本体スキャナーを止め、
-        //           閉じるとき initScanner() で本体を必ず戻す。
+        // ★ V19.8: 「登録データの修正」画面でのカメラ読み直し
+        //   ねらい）修正のたびに手で打ち直すのが大変なので、
+        //           台番・主基板・封印の各欄をタップしたらその場でカメラを出して読み直せるようにする。
+        //   仕様）
+        //     ・台番   … 数字のみのQRを受け付ける。1件読んだらカメラを自動で閉じる（上書き）
+        //     ・主基板 … 封印QR(先頭B)と数字だけのQRは無視。1件読んだら自動で閉じる（上書き）
+        //     ・封印   … 封印QR(先頭B)だけを受け付け、重複を除いて「 / 」区切りで追加。続けて読める
+        //     ・どの欄も画面に値が出るだけで、「保存」を押すまで確定しない（＝これが確認フェーズ）
+        //   注意）端末はカメラを同時に2つ使えない。開くとき本体スキャナーを止め、
+        //         閉じるとき initScanner() で本体を必ず戻す。
         // ========================================
-        let editSealScanner = null;   // 修正画面専用のカメラ（本体 html5QrCode とは別物）
-        let editSealAdded   = 0;      // この回で読み足した枚数（表示用）
-        let editTorchOn     = false;  // 修正画面カメラのライト状態
+        const EDIT_SCAN_FIELDS = ['edit-machine', 'edit-mainboard', 'edit-seals'];
+
+        let editScanner    = null;   // 修正画面専用のカメラ（本体 html5QrCode とは別物）
+        let editScanTarget = null;   // 'machine' | 'mainboard' | 'seals'
+        let editSealAdded  = 0;      // 封印をこの回で読み足した枚数（表示用）
+        let editTorchOn    = false;  // 修正画面カメラのライト状態
 
         // 封印欄の文字列 → 配列
         function getEditSealList() {
@@ -3404,26 +3440,49 @@
             document.getElementById('edit-seals').value = list.join(' / ');
         }
 
-        function updateEditScanCount() {
-            const el = document.getElementById('edit-scan-count');
+        // 「✏」：readonlyを外してキーボードで直せるようにする
+        function enableEditManual(fieldId) {
+            closeEditScan();                 // カメラが開いていたら閉じる
+            const el = document.getElementById(fieldId);
             if (!el) return;
-            el.innerText = '読み取った封印：' + editSealAdded + '枚　（現在 ' + getEditSealList().length + '枚）';
-        }
-
-        // 「✏ 手入力」：readonlyを外してキーボードで直せるようにする
-        function enableEditSealsManual() {
-            closeEditSealScan();                 // カメラが開いていたら閉じる
-            const el = document.getElementById('edit-seals');
             el.readOnly = false;
             el.focus();
             el.select();
         }
 
-        // カメラ起動
-        async function openEditSealScan() {
+        // 読み取り中ラベル／件数表示の更新
+        function updateEditScanInfo() {
+            const label = document.getElementById('edit-scan-target-label');
+            const count = document.getElementById('edit-scan-count');
+            const name = (editScanTarget === 'machine') ? '台番'
+                       : (editScanTarget === 'mainboard') ? '主基板'
+                       : '封印';
+            if (label) label.innerText = '📷 ' + name + ' を読み取り中';
+
+            if (!count) return;
+            if (editScanTarget === 'seals') {
+                count.innerText = '追加：' + editSealAdded + '枚　（現在 ' + getEditSealList().length + '枚）';
+            } else {
+                count.innerText = '1件読み取ると自動で閉じます';
+            }
+        }
+
+        // カメラ起動（target: 'machine' / 'mainboard' / 'seals'）
+        async function openEditScan(target) {
             if (!isEditOpen()) return;
-            if (!document.getElementById('edit-seals').readOnly) return; // 手入力中はカメラを出さない
-            if (editSealScanner) return;                                  // 二重起動防止
+
+            const fieldId = (target === 'machine') ? 'edit-machine'
+                          : (target === 'mainboard') ? 'edit-mainboard'
+                          : 'edit-seals';
+            const field = document.getElementById(fieldId);
+            if (!field || !field.readOnly) return;   // ✏手入力中はカメラを出さない
+
+            // 別の欄でカメラが開いていたら、いったん閉じてから開き直す
+            if (editScanner) {
+                if (editScanTarget === target) return;   // 同じ欄なら何もしない（二重起動防止）
+                closeEditScan(true);                     // true = 本体スキャナーは戻さない
+                await new Promise(function (r) { setTimeout(r, 300); });
+            }
 
             if (typeof Html5Qrcode === 'undefined') {
                 alert("カメラ機能の読み込みに失敗しました。\n通信環境を確認し、ページを再読み込みしてください。");
@@ -3435,73 +3494,115 @@
                 try { await html5QrCode.stop(); } catch (e) {}
             }
 
+            editScanTarget = target;
             editSealAdded = 0;
             editTorchOn = false;
             document.getElementById('edit-scan-area').style.display = 'block';
-            updateEditScanCount();
+            updateEditScanInfo();
+            scrollElTop('edit-modal');   // カメラが画面外に出ないよう上に寄せる
 
             // ② 修正画面用のカメラを起動
-            editSealScanner = new Html5Qrcode("edit-reader", { useBarCodeDetectorIfSupported: true });
+            editScanner = new Html5Qrcode("edit-reader", { useBarCodeDetectorIfSupported: true });
             try {
-                await editSealScanner.start(
+                await editScanner.start(
                     { facingMode: "environment" },
                     {
                         fps: 30,
                         videoConstraints: { facingMode: "environment" },
                         qrbox: function (w, h) { return { width: w * 0.75, height: h * 0.75 }; }
                     },
-                    function (text) { handleEditSealScanned(text); }
+                    function (text) { handleEditScanned(text); }
                 );
                 setTimeout(checkEditTorchSupport, 500);
             } catch (e) {
                 console.error("修正画面のカメラ起動に失敗", e);
-                editSealScanner = null;
+                editScanner = null;
+                editScanTarget = null;
                 document.getElementById('edit-scan-area').style.display = 'none';
                 alert("カメラを起動できませんでした。\n他の画面でカメラを使っていないか確認してください。");
                 initScanner();   // 本体カメラだけは戻しておく
             }
         }
 
-        // 読み取り時の処理（封印QR以外・重複は無視して読み続ける）
-        function handleEditSealScanned(value) {
-            if (!isValidSealQr(value)) return;
+        // 読み取り時の処理（対象外のQRは黙って無視し、読み続ける）
+        function handleEditScanned(value) {
+            // ---------- 台番 ----------
+            if (editScanTarget === 'machine') {
+                if (!isValidMachineId(value)) return;          // 数字のみ以外は無視
 
-            const list = getEditSealList();
-            if (list.includes(value)) return;   // 同じ封印は1回だけ
+                document.getElementById('edit-machine').value = value;
+                playScanBeep();
 
-            list.push(value);
-            setEditSealList(list);
-            editSealAdded++;
-            updateEditScanCount();
-            playScanBeep();
-            showScanToast("封印を追加しました（保存を押すまで確定しません）");
+                // 選択中の店舗と違う店舗の台番なら注意喚起（ブロックはしない）
+                const w = machineIdConfirmWarning(value);
+                showScanToast(w.warn ? "⚠ 別店舗の台番です：" + value : "台番を読み取りました：" + value);
+
+                closeEditScan();                               // 1件で閉じる
+                return;
+            }
+
+            // ---------- 主基板 ----------
+            if (editScanTarget === 'mainboard') {
+                if (isValidSealQr(value)) return;              // 先頭B＝封印QR。無視
+                if (/^\d+$/.test(value)) return;               // 数字だけ＝台番QR。無視
+                if (isInvalidMainBoardQr(value)) return;       // BISHOP…は主基板ではない
+
+                document.getElementById('edit-mainboard').value = value;
+                playScanBeep();
+
+                // 形式チェック（V17.3 mainboardQrShape）。おかしければ注意喚起だけ出す
+                const qs = normalizeQrKey(value);
+                const shapeNg = MAINBOARD_SHAPE_WARN && qs && !mainboardQrShape(qs);
+                showScanToast(shapeNg ? "⚠ 形式が違うかも：" + value : "主基板を読み取りました：" + value);
+
+                closeEditScan();                               // 1件で閉じる
+                return;
+            }
+
+            // ---------- 封印（続けて読む） ----------
+            if (editScanTarget === 'seals') {
+                if (!isValidSealQr(value)) return;
+
+                const list = getEditSealList();
+                if (list.includes(value)) return;   // 同じ封印は1回だけ
+
+                list.push(value);
+                setEditSealList(list);
+                editSealAdded++;
+                updateEditScanInfo();
+                playScanBeep();
+                showScanToast("封印を追加しました（保存を押すまで確定しません）");
+                return;
+            }
         }
 
         // カメラ停止＋本体スキャナー復帰
-        function closeEditSealScan() {
+        //   keepMainStopped=true のときは本体を戻さない（別の欄へ開き直す途中で使う）
+        function closeEditScan(keepMainStopped) {
             const area = document.getElementById('edit-scan-area');
             if (area) area.style.display = 'none';
 
             const btn = document.getElementById('btn-edit-torch');
-            if (btn) btn.style.display = 'none';
+            if (btn) { btn.style.display = 'none'; btn.style.background = ''; }
 
-            if (!editSealScanner) return;
+            if (!editScanner) return;
 
-            const sc = editSealScanner;
-            editSealScanner = null;   // 先に null にして二重停止を防ぐ
+            const sc = editScanner;
+            editScanner = null;       // 先に null にして二重停止を防ぐ
+            editScanTarget = null;
             sc.stop().catch(function (e) { console.warn("修正画面カメラ停止失敗", e); })
               .then(function () {
                   try { sc.clear(); } catch (e) {}
-                  initScanner();      // ★ 本体スキャナーを必ず戻す
+                  if (!keepMainStopped) initScanner();   // ★ 本体スキャナーを必ず戻す
               });
         }
 
         // 修正画面カメラのライト対応判定
         function checkEditTorchSupport() {
             const btn = document.getElementById('btn-edit-torch');
-            if (!btn || !editSealScanner) return;
+            if (!btn || !editScanner) return;
             try {
-                const cap = editSealScanner.getRunningTrackCapabilities();
+                const cap = editScanner.getRunningTrackCapabilities();
                 btn.style.display = (cap && cap.torch) ? 'block' : 'none';
             } catch (e) {
                 btn.style.display = 'none';
@@ -3510,10 +3611,10 @@
 
         // 修正画面カメラのライトON/OFF
         async function toggleEditTorch() {
-            if (!editSealScanner) return;
+            if (!editScanner) return;
             const next = !editTorchOn;
             try {
-                await editSealScanner.applyVideoConstraints({ advanced: [{ torch: next }] });
+                await editScanner.applyVideoConstraints({ advanced: [{ torch: next }] });
                 editTorchOn = next;
                 const btn = document.getElementById('btn-edit-torch');
                 if (btn) btn.style.background = next ? '#facc15' : '';
