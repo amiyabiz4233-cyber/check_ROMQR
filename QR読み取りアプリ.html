@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V20.9</title>
+    <title>点検スキャナー V21.0</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -905,7 +905,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V20.9</div>
+        <div class="version-tag">V21.0</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -918,7 +918,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V20.9</div>
+            <div class="version-tag">V21.0</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -1947,6 +1947,95 @@
                 }
             } catch (e) {}
         }
+
+        // ========================================
+        // ★ V21.0: スリープ復帰時のカメラ自動再起動
+        // ----------------------------------------
+        // 症状：
+        //   iPhoneが画面消灯（スリープ）して復帰すると、カメラ映像が固まったまま
+        //   QRを読まなくなる。これまでは毎回手でカメラを掛け直していた。
+        // 原因：
+        //   iOS Safari はバックグラウンド化するとビデオトラックを停止／ミュートする。
+        //   html5-qrcode 側は「まだSCANNING中」のつもりなので自力では復帰しない。
+        // 対策：
+        //   画面が「見える」状態に戻ったとき、ビデオが本当に生きているか確かめ、
+        //   死んでいるときだけ initScanner() を1回だけ実行する。
+        //   ・生きていれば何もしない（無駄な再起動で読み取りを止めない）
+        //   ・resumeRestartBusy で多重実行を防ぐ
+        //   ・ライトの意図(torchDesired)は再起動をまたいで保持する
+        // ========================================
+        let resumeRestartBusy = false;   // 再起動処理中フラグ（多重実行防止）
+
+        // 本体カメラ（#reader 内の video）が停止しているかを判定する
+        function isMainCameraDead() {
+            const video = document.querySelector('#reader video');
+            if (!video) return true;                                   // video が無い＝起動していない
+            if (video.paused || video.ended) return true;              // 再生が止まっている
+            if (!video.videoWidth || !video.videoHeight) return true;  // 映像サイズ0＝描画できていない
+            const stream = video.srcObject;
+            if (!stream || typeof stream.getVideoTracks !== 'function') return true;
+            const track = stream.getVideoTracks()[0];
+            if (!track) return true;
+            if (track.readyState !== 'live') return true;              // トラックが ended
+            if (track.muted) return true;                              // iOSは裏に回ると muted になる
+            return false;
+        }
+
+        // スリープ復帰・アプリ切替からの復帰時に呼ぶ
+        async function restartCameraOnResume() {
+            if (resumeRestartBusy) return;                              // 二重実行しない
+            if (document.visibilityState !== 'visible') return;         // まだ裏なら何もしない
+
+            // 点検画面が出ていない（店舗選択画面）ならカメラ不要
+            const mainApp = document.getElementById('main-app');
+            if (!mainApp || mainApp.style.display === 'none') return;
+
+            // ROM入力中（ステップ3）はカメラを隠しているので触らない
+            if (currentStep === 3) return;
+
+            // 修正画面のカメラが開いている間は本体カメラを起動してはいけない
+            //（端末はカメラを同時に2つ使えないため）
+            if (editScanner) return;
+
+            // カメラ枠が非表示なら何もしない
+            const rc = document.getElementById('reader-container');
+            if (!rc || rc.style.display === 'none') return;
+
+            resumeRestartBusy = true;
+            try {
+                // 復帰直後はiOS側の準備が整っていないので、少し待ってから判定する
+                await new Promise(r => setTimeout(r, 600));
+
+                // まず play() を試す。これだけで直る端末もある（＝再起動せずに済む）
+                const video = document.querySelector('#reader video');
+                if (video && video.paused) { try { await video.play(); } catch (e) {} }
+                await new Promise(r => setTimeout(r, 300));
+
+                if (isMainCameraDead()) {
+                    console.log("[V21.0] 復帰後カメラ停止を検知 → 再起動します");
+                    const keepTorch = torchDesired;   // ライトの意図を退避
+                    await initScanner();              // ★ 再起動はここ1回だけ
+                    torchDesired = keepTorch;         // initScanner内で true に戻るので復元
+                    if (!keepTorch) forceTorchOff();
+                } else {
+                    console.log("[V21.0] 復帰後もカメラは生存 → 再起動しません");
+                }
+            } catch (e) {
+                console.warn("[V21.0] 復帰時のカメラ再起動に失敗", e);
+            } finally {
+                resumeRestartBusy = false;
+            }
+        }
+
+        // 復帰の経路は端末差があるので3つとも拾う（中で生存確認するので空振りは無害）
+        //   visibilitychange … スリープ復帰・アプリ切替の主経路
+        //   pageshow         … bfcache（戻る操作など）からの復帰
+        //   focus            … 上2つが飛ばない端末の保険
+        document.addEventListener('visibilitychange', function () {
+            if (document.visibilityState === 'visible') restartCameraOnResume();
+        });
+        window.addEventListener('pageshow', function () { restartCameraOnResume(); });
+        window.addEventListener('focus',    function () { restartCameraOnResume(); });
 
         function isValidMachineId(value) {
             if (!/^\d+$/.test(value)) return false;
