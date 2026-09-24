@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V21.5</title>
+    <title>点検スキャナー V21.7</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -607,6 +607,9 @@
             line-height: 1.6;
         }
         #seal-history-note .sh-title { font-weight: bold; font-size: 15px; margin-bottom: 6px; }
+        /* ★ V21.7: 初めての台の「近い番号の台の封印枚数」。さりげなく出す（枠・背景なし、灰色の小さい字） */
+        #seal-history-note.sh-state-hint { border: none; background: transparent; padding: 2px 4px; }
+        #seal-history-note .sh-hint      { color: #888; font-size: 12px; }
         #seal-history-note .sh-row   { font-family: monospace; font-size: 13px; letter-spacing: 0.5px; }
         #seal-history-note .sh-ok    { color: #15803d; font-weight: bold; }   /* 読めた */
         #seal-history-note .sh-wait  { color: #b45309; font-weight: bold; }   /* まだ読めていない */
@@ -937,7 +940,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V21.5</div>
+        <div class="version-tag">V21.7</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -950,7 +953,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V21.5</div>
+            <div class="version-tag">V21.7</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -2430,16 +2433,84 @@
         // ----------------------------------------------------------------
         // ★ V18.8: 照合パネルの描画（④封印スキャンのときだけ出す）
         // ----------------------------------------------------------------
+        // ----------------------------------------------------------------
+        // ★ V21.7: 一度もスキャンしたことがない主基板の「封印枚数の参考値」
+        //   主基板QRは連番。番号が一番近い台は、同じ機種・同じロットである可能性が高い
+        //   → その台の封印枚数を「参考」として出す（ROMは使わない。主基板QRだけで判断）
+        //
+        //   グループ（この中だけで近さを比べる）
+        //     ・13桁 M2JB260511788 → 先頭6文字「M2JB26」（記号＋製造年）、連番＝後ろ7桁
+        //     ・「/」付き 1K56/79393 → 「/」の前「1K56」、連番＝後ろ5桁
+        //   連番の差が SEAL_NEIGHBOR_MAX_GAP を超える台は「近い」と言えないので出さない
+        //
+        //   実データ検証（2026-09-24・初めての台8,274台を、その時点までの履歴だけで推定）
+        //     ±5000以内：表示できる 94.6%／枚数が当たる 92.9%
+        //     （参考）先頭4文字だけの多数決は当たり 79.7%。近い台の方がずっと当たる
+        // ----------------------------------------------------------------
+        const SEAL_NEIGHBOR_MAX_GAP = 5000;
+        const QR_SERIAL_A = /^([A-Z]\d[A-Z]{2}\d{2})(\d{7})$/;   // 13桁
+        const QR_SERIAL_B = /^(\d[A-Z]\d{2})\/(\d{5})$/;         // 「/」付き
+        let sealNeighborCache = { key: null, result: null };        // 同じ台で何度も計算しない
+
+        function splitQrSerial(qr) {
+            const k = normalizeQrKey(qr);
+            let m = QR_SERIAL_A.exec(k);
+            if (m) return { group: m[1], serial: parseInt(m[2], 10) };
+            m = QR_SERIAL_B.exec(k);
+            if (m) return { group: m[1], serial: parseInt(m[2], 10) };
+            return null;
+        }
+
+        // 戻り値: null（出せない）／ { qr: 近い台のQR, count: 封印枚数, gap: 連番の差 }
+        function guessSealCountByNeighbor(mainBoardQr) {
+            const key = normalizeQrKey(mainBoardQr);
+            if (!key || mainBoardQr === "なし") return null;
+            if (sealNeighborCache.key === key) return sealNeighborCache.result;
+
+            const me = splitQrSerial(key);
+            let best = null;
+            if (me) {
+                // 埋め込み履歴＋端末で学習した履歴の両方から探す（端末側が新しいので上書き）
+                const src = Object.assign({}, MAINBOARD_SEAL_HISTORY || {}, loadLocalSealHistory());
+                for (const q in src) {
+                    if (q === key) continue;
+                    const o = splitQrSerial(q);
+                    if (!o || o.group !== me.group) continue;
+                    const gap = Math.abs(o.serial - me.serial);
+                    if (gap > SEAL_NEIGHBOR_MAX_GAP) continue;
+                    if (best && gap >= best.gap) continue;
+                    const n = String(src[q] || "").split(",").map(decodeSeal).filter(Boolean).length;
+                    if (n > 0) best = { qr: q, count: n, gap: gap };
+                }
+            }
+            sealNeighborCache = { key: key, result: best };
+            return best;
+        }
+
         function renderSealHistoryNote() {
             const box = document.getElementById('seal-history-note');
             if (!box) return;
 
-            box.classList.remove('sh-state-wait', 'sh-state-match', 'sh-state-added', 'sh-state-missing');
+            box.classList.remove('sh-state-wait', 'sh-state-match', 'sh-state-added', 'sh-state-missing', 'sh-state-hint');
 
-            // ④以外、または前回の記録が無い台では何も出さない
-            if (currentStep !== 4 || !expectedSeals || expectedSeals.length === 0) {
+            // ④以外では何も出さない
+            if (currentStep !== 4) {
                 box.style.display = 'none';
                 box.innerHTML = '';
+                return;
+            }
+
+            // ★ V21.7: 前回の記録が無い（一度もスキャンしたことがない）台 → 近い番号の台の枚数を控えめに
+            if (!expectedSeals || expectedSeals.length === 0) {
+                const g = guessSealCountByNeighbor(currentData ? currentData.mainBoardId : null);
+                if (!g) {
+                    box.style.display = 'none';
+                    box.innerHTML = '';
+                    return;
+                }
+                box.classList.add('sh-state-hint');
+                box.innerHTML = '<div class="sh-hint">参考：近い番号の台（' + escHtml(g.qr) + '）は封印 ' + g.count + '枚</div>';
+                box.style.display = 'block';
                 return;
             }
 
@@ -4002,8 +4073,15 @@
         //   ・年(古い): 今年−8年より前はあり得ない（2026年なら 17以下）
         //               ※履歴の最古の正常値は 19（アイムジャグラーEX 2019年製）
         //   ・年週(未来): 今日の年週より先（まだ来ていない週）はあり得ない
+        //   ★ V21.6: 主基板QRとの年差チェックを追加
+        //   ・13桁の主基板QR（例 M2JB260511788）は 5〜6文字目が製造年
+        //   ・差 ＝ QRの年 − ROMの年 が マイナス（ROMが基板より新しい）か 6年以上 なら警告
+        //     実データ：KYはほぼ0〜1年、EAIは1〜3年、最大4年。5年までは余裕として通す
+        //     全履歴5,237行で「ROMが新しい」は入力ミスの1件（4252）だけ＝正しい値の誤警告0件
+        //   ・「/」付きQR（例 1K56/79393）は年が入っていないのでチェックしない
         //   戻り値: 問題なし → null ／ 問題あり → 理由の配列
-        function romDateProblems(r1) {
+        const ROM_QR_YEAR_GAP_MAX = 5;   // QRの年 − ROMの年 の許容上限（これを超えたら警告）
+        function romDateProblems(r1, mainBoardId) {
             if (!/^\d{4}$/.test(r1)) return null;          // 4桁以外は別のチェックが止める
             const yy = parseInt(r1.substring(0, 2), 10);
             const ww = parseInt(r1.substring(2, 4), 10);
@@ -4028,6 +4106,19 @@
             if (yy > nowYY || (yy === nowYY && ww > nowWeek && ww <= 53)) {
                 probs.push("「" + r1 + "」は未来の日付です（今日は " + String(nowYY).padStart(2, "0") + String(nowWeek).padStart(2, "0") + " 週）");
             }
+            // ★ V21.6: 主基板QRの製造年との差（13桁の形式のときだけ）
+            const qr = String(mainBoardId || "").trim().toUpperCase();
+            const qm = /^[A-Z]\d[A-Z]{2}(\d{2})\d{7}$/.exec(qr);
+            if (qm) {
+                const qy = parseInt(qm[1], 10);
+                const gap = qy - yy;
+                if (gap < 0) {
+                    probs.push("基板(20" + qm[1] + "年製)よりROM(20" + r1.substring(0, 2) + "年製)が新しくなっています");
+                } else if (gap > ROM_QR_YEAR_GAP_MAX) {
+                    probs.push("基板(20" + qm[1] + "年製)とROM(20" + r1.substring(0, 2) + "年製)が" + gap + "年離れています");
+                }
+            }
+
             return probs.length ? probs : null;
         }
 
@@ -4064,7 +4155,7 @@
 
                 // ★ V21.5: ROM①の年・週があり得なければ、点滅する派手な警告で再確認
                 //   （OKで続行は可能。止めはしない＝本当にその刻印のROMもあり得るため）
-                const dateProbs = romDateProblems(r1);
+                const dateProbs = romDateProblems(r1, currentData.mainBoardId); // ★ V21.6: 主基板QRも渡す
                 if (dateProbs) {
                     let msg = "<span class=\"rom-alarm-title\">\u26a0\u26a0 ROM番号を確認！ \u26a0\u26a0</span>" +
                         dateProbs.join("<br>") + "<br>";
