@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V21.4</title>
+    <title>点検スキャナー V21.5</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -787,6 +787,31 @@
         html, body, button, input, select, textarea, a, label {
             touch-action: manipulation;
         }
+        /* ★ V21.5: ROM①の年・週があり得ないときの派手な警告
+           ・モーダルの枠を赤⇔黄で点滅させ、見落としを防ぐ
+           ・中の文字を大きく太く */
+        @keyframes romAlarmBlink {
+            0%, 100% { border-color: #dc2626; background: #fff5f5; }
+            50%      { border-color: #facc15; background: #fee2e2; }
+        }
+        #confirm-modal.rom-alarm {
+            border: 8px solid #dc2626 !important;
+            animation: romAlarmBlink 0.6s linear infinite;
+        }
+        #confirm-modal.rom-alarm #warning-msg {
+            font-size: 1.25em;
+            font-weight: bold;
+            color: #fff;              /* 警告欄はもともと赤地なので白文字にする */
+        }
+        .rom-alarm-title {
+            display: block;
+            font-size: 1.4em;
+            background: #facc15;      /* 見出しは黄色地＋黒文字で目立たせる */
+            color: #111;
+            padding: 6px;
+            border-radius: 6px;
+            margin-bottom: 6px;
+        }
     </style>
 </head>
 
@@ -912,7 +937,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V21.4</div>
+        <div class="version-tag">V21.5</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -925,7 +950,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V21.4</div>
+            <div class="version-tag">V21.5</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -3394,12 +3419,15 @@
             }
         }
 
-        function showConfirmation(value, isWarning = false, warningMsg = null) {
+        function showConfirmation(value, isWarning = false, warningMsg = null, alarm = false) {
             const modal = document.getElementById('confirm-modal');
             const warning = document.getElementById('warning-msg');
             const display = document.getElementById('scanned-display');
 
             display.innerText = value;
+
+            // ★ V21.5: 派手な警告（点滅）は ROM日付異常のときだけ。毎回いったん外してから付け直す
+            modal.classList.toggle('rom-alarm', !!alarm);
 
             // ★ V15.6: 既定メッセージ（6桁誤読）を退避し、カスタム文言を差し込めるように
             if (!warning.dataset.defaultHtml) warning.dataset.defaultHtml = warning.innerHTML;
@@ -3969,6 +3997,40 @@
             showScanToast("修正を保存しました");
         }
 
+        // ★ V21.5: ROM①（先頭2桁＝年・後2桁＝週）があり得ない値かを調べる
+        //   ・週      : 01〜53 以外はあり得ない（00・54以上）
+        //   ・年(古い): 今年−8年より前はあり得ない（2026年なら 17以下）
+        //               ※履歴の最古の正常値は 19（アイムジャグラーEX 2019年製）
+        //   ・年週(未来): 今日の年週より先（まだ来ていない週）はあり得ない
+        //   戻り値: 問題なし → null ／ 問題あり → 理由の配列
+        function romDateProblems(r1) {
+            if (!/^\d{4}$/.test(r1)) return null;          // 4桁以外は別のチェックが止める
+            const yy = parseInt(r1.substring(0, 2), 10);
+            const ww = parseInt(r1.substring(2, 4), 10);
+
+            // 今日の ISO 週番号（月曜始まり）を求める
+            const now = new Date();
+            const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
+            const dayNum = d.getUTCDay() || 7;
+            d.setUTCDate(d.getUTCDate() + 4 - dayNum);      // その週の木曜日へ寄せる
+            const isoYear = d.getUTCFullYear();
+            const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+            const nowWeek = Math.ceil(((d - yearStart) / 86400000 + 1) / 7);
+            const nowYY = isoYear % 100;
+
+            const probs = [];
+            if (ww < 1 || ww > 53) {
+                probs.push("週が「" + r1.substring(2, 4) + "」→ 週は 01〜53 しかありません");
+            }
+            if (yy < nowYY - 8) {
+                probs.push("年が「" + r1.substring(0, 2) + "」→ 20" + String(yy).padStart(2, "0") + "年製は古すぎます");
+            }
+            if (yy > nowYY || (yy === nowYY && ww > nowWeek && ww <= 53)) {
+                probs.push("「" + r1 + "」は未来の日付です（今日は " + String(nowYY).padStart(2, "0") + String(nowWeek).padStart(2, "0") + " 週）");
+            }
+            return probs.length ? probs : null;
+        }
+
         function handleManualInput() {
             if (currentStep === 3) {
                 const r1 = sanitizeRomDigits(document.getElementById('rom-1'));
@@ -3999,6 +4061,20 @@
 
                 const romId = r1 + r2 + r3;
                 pendingValue = romId;
+
+                // ★ V21.5: ROM①の年・週があり得なければ、点滅する派手な警告で再確認
+                //   （OKで続行は可能。止めはしない＝本当にその刻印のROMもあり得るため）
+                const dateProbs = romDateProblems(r1);
+                if (dateProbs) {
+                    let msg = "<span class=\"rom-alarm-title\">\u26a0\u26a0 ROM番号を確認！ \u26a0\u26a0</span>" +
+                        dateProbs.join("<br>") + "<br>";
+                    if (autoFilledRom && romId !== autoFilledRom) {
+                        msg += "過去：" + autoFilledRom + "<br>";
+                    }
+                    msg += "入力ミスではありませんか？";
+                    showConfirmation(romId, true, msg, true);
+                    return;
+                }
 
                 // ★ V15.6: 過去取得済みと違うROMが入力されたら赤警告で再確認
                 if (autoFilledRom && romId !== autoFilledRom) {
