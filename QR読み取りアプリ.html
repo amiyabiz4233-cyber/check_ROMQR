@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V22.2</title>
+    <title>点検スキャナー V22.3</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -940,7 +940,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V22.2</div>
+        <div class="version-tag">V22.3</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -953,7 +953,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V22.2</div>
+            <div class="version-tag">V22.3</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -3668,6 +3668,8 @@
         }
 
         function updateUI() {
+            // ★ V22.3: 画面（工程）が変わったらズームを100%へ戻す
+            if (window.resetZoom) window.resetZoom(120);
             document.getElementById('btn-skip').style.display = (currentStep === 2 || currentStep === 4) ? 'block' : 'none';
             document.getElementById('btn-finish').style.display = (currentStep === 4) ? 'block' : 'none';
             document.getElementById('btn-back').style.display = (currentStep > 1) ? 'block' : 'none';
@@ -4422,6 +4424,84 @@
                 true                        // ★ Slackボタンを表示
             );
         }
+    </script>
+    <!-- ★ V22.3: ズーム自動リセット
+         ・iOS Safari は user-scalable=no を無視するため、ピンチで拡大されることがある
+           （ダブルタップズームは V21.3 の touch-action で既に禁止済み）
+         ・拡大そのものは許可したまま、「画面遷移」「何か操作・入力があった」時に100%へ戻す
+         ・戻し方：viewport の content を一瞬別の文字列に変え、元に戻す
+           → iOS が viewport を再適用し、initial-scale=1.0（100%）に戻る
+         ・キーボード表示中（入力欄にフォーカス中）は戻さない。フォーカスが外れた時に戻す -->
+    <script>
+    (function () {
+        const vp = document.querySelector('meta[name="viewport"]');
+        if (!vp) return;
+        const BASE = vp.getAttribute('content');          // 元の viewport 設定（戻し先）
+        let timer = null;
+
+        // 今ズームされているか（visualViewport が無い古い端末では「不明＝戻す」扱い）
+        function isZoomed() {
+            const v = window.visualViewport;
+            return v ? (v.scale > 1.01) : true;
+        }
+
+        // 入力欄にフォーカス中か（キーボード表示中にviewportを触ると画面が暴れるので避ける）
+        function isTyping() {
+            const a = document.activeElement;
+            if (!a) return false;
+            if (a.tagName === 'TEXTAREA' || a.tagName === 'SELECT') return true;
+            if (a.tagName === 'INPUT') {
+                const t = (a.type || 'text').toLowerCase();
+                return !['button', 'submit', 'checkbox', 'radio', 'file', 'range', 'color'].includes(t);
+            }
+            return false;
+        }
+
+        // 実際に100%へ戻す処理
+        function doReset() {
+            if (!isZoomed()) return;       // 拡大されていなければ何もしない（無駄な再描画を避ける）
+            if (isTyping()) return;        // 入力中は focusout で改めて呼ばれる
+            // 一瞬別の設定にしてから元に戻す（同じ文字列を入れ直すだけでは iOS は反応しない）
+            vp.setAttribute('content', BASE + ', minimum-scale=1.0');
+            setTimeout(function () {
+                vp.setAttribute('content', BASE);
+                // 拡大中に横へずれていた表示位置も左端へ戻す
+                if (window.scrollX) window.scrollTo(0, window.scrollY);
+            }, 60);
+        }
+
+        // 外から呼ぶ入口。連続して呼ばれても最後の1回だけ実行（デバウンス）
+        window.resetZoom = function (delay) {
+            clearTimeout(timer);
+            timer = setTimeout(doReset, (delay == null) ? 100 : delay);
+        };
+
+        // ---- きっかけ①：何か操作・入力があった ----
+        // ボタン（モーダル内も含む）を押した
+        document.addEventListener('click', function (e) {
+            if (e.target && e.target.closest && e.target.closest('button, a, label, .session-row')) {
+                window.resetZoom(150);
+            }
+        }, true);
+        // 入力欄の値が確定した／フォーカスが外れた（キーボードが閉じた後）
+        document.addEventListener('change',   function () { window.resetZoom(150); }, true);
+        document.addEventListener('focusout', function () { window.resetZoom(200); }, true);
+
+        // ---- きっかけ②：画面遷移（モーダル・オーバーレイの開閉） ----
+        // 各オーバーレイは style.display を切り替えて開閉しているので、その変化を監視する
+        // （関数ごとに呼び出しを埋め込むと、今後モーダルを増やした時に入れ忘れるため）
+        const obs = new MutationObserver(function (muts) {
+            for (const m of muts) {
+                const id = m.target && m.target.id;
+                if (id && /(-overlay|-modal)$/.test(id)) { window.resetZoom(120); break; }
+            }
+        });
+        obs.observe(document.body, { attributes: true, attributeFilter: ['style', 'class'], subtree: true });
+
+        // ---- きっかけ③：アプリに戻ってきた／画面を回転した ----
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) window.resetZoom(300); });
+        window.addEventListener('orientationchange', function () { window.resetZoom(400); });
+    })();
     </script>
 </body>
 </html>
