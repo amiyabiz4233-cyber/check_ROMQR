@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V22.3</title>
+    <title>点検スキャナー V22.5</title>
 
     <!-- ★ V15.7修正: CDNが遅い/ブロックされてもトップpage描画を止めないよう async 化 -->
     <script async src="https://unpkg.com/html5-qrcode"></script>
@@ -85,7 +85,10 @@
 
         /* 上＝カメラ枠の上端 / 下＝左右のライトと同じ高さ（ライトとライトの間） */
         #btn-seal-register-top    { top: 10px; }
-        #btn-seal-register-bottom { bottom: 10px; }
+        #btn-seal-register-bottom {
+            bottom: 10px;                  /* 下端は固定。高さを増やした分は上へ伸びる */
+            height: 120px;                 /* ★ V22.4: 押しやすいよう下だけ2倍（60px→120px） */
+        }
 
         .torch-btn {
             display: none;
@@ -123,6 +126,8 @@
             font-weight: bold;
         }
 
+        /* ★ V22.5: iOSは文字が16px未満の入力欄をタップすると自動で拡大する。どの欄も16px未満にしない */
+        input, select, textarea { font-size: max(16px, 1em); }
         input, select {
             width: 100%;
             height: 50px;
@@ -940,7 +945,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V22.3</div>
+        <div class="version-tag">V22.5</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -953,7 +958,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V22.3</div>
+            <div class="version-tag">V22.5</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号スキャン</div>
@@ -4424,6 +4429,31 @@
                 true                        // ★ Slackボタンを表示
             );
         }
+    </script>
+    <!-- ★ V22.5: ピンチ拡大そのものを止める
+         ・V22.3の「viewportを書き換えて100%へ戻す」は iOS 実機では効かなかった
+           （iOS は user-scalable / maximum-scale を無視するため、書き換えても拡大率が戻らない）
+         ・そこで拡大が起きる前に止める。iOS Safari 独自の gesturestart/gesturechange を
+           preventDefault すると2本指の拡大縮小が起きない（ホーム画面追加のアプリでも同じ）
+         ・念のため2本指以上の touchmove も止める（1本指のスクロールはそのまま）
+         ・ダブルタップ拡大は V21.3 の touch-action: manipulation で既に禁止済み
+         ・V22.3の自動リセットは、他の端末（Android等）向けの保険として残す -->
+    <script>
+    (function () {
+        // passive:false にしないと preventDefault が無視される
+        const opt = { passive: false };
+        function stop(e) { e.preventDefault(); }
+
+        // iOS Safari のピンチ操作（gesture系イベントは iOS だけが出す）
+        document.addEventListener('gesturestart',  stop, opt);
+        document.addEventListener('gesturechange', stop, opt);
+        document.addEventListener('gestureend',    stop, opt);
+
+        // 2本指以上で動かしたら止める（1本指スクロールは妨げない）
+        document.addEventListener('touchmove', function (e) {
+            if (e.touches && e.touches.length > 1) e.preventDefault();
+        }, opt);
+    })();
     </script>
     <!-- ★ V22.3: ズーム自動リセット
          ・iOS Safari は user-scalable=no を無視するため、ピンチで拡大されることがある
