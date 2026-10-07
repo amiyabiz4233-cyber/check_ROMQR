@@ -4,8 +4,9 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V24.5</title>
+    <title>点検スキャナー V24.6</title>
 
+    <!-- ★V24.6: ROM③を入れ直したとき、入力欄の上に案内文を出したままにする（トーストは1秒で消えるため） -->
     <!-- ★V24.5: ROM①を人が打ち直したら、同じ機種で同じROM①の過去実績から ROM③ を自動入力（KYのみ）。
          候補が複数なら主基板QRの連番が一番近い台を採用（全履歴で正解率約80%）。候補なしは ROM③ を空欄に -->
     <!-- ★V24.4: 電池節約。確認画面（読取値の確認・封印登録の確認）を出している間はライト消灯。
@@ -972,7 +973,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V24.5</div>
+        <div class="version-tag">V24.6</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -985,7 +986,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V24.5</div>
+            <div class="version-tag">V24.6</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号</div>
@@ -1021,6 +1022,8 @@
                 <div id="rom-history-note" style="display:none; color:#dc2626; font-weight:bold; margin-bottom:8px; font-size:15px; line-height:1.4;">過去取得済みのＲＯＭ番号を自動入力しております</div>
                 <!-- ★ V16.9: 相似度80%超の類似主基板QRからROMを予測入力したときの案内（完全一致=赤 とは別色のオレンジ） -->
                 <div id="rom-fuzzy-note" style="display:none; color:#ffffff; font-weight:bold; margin-bottom:5px; font-size:13px; line-height:1.35; border:1px solid #4c1d95; background:linear-gradient(135deg,#7c3aed 0%,#a855f7 60%,#c026d3 100%); border-radius:5px; padding:5px 7px; text-shadow:0 1px 1px rgba(0,0,0,.3);"></div>
+                <!-- ★V24.6: ROM①を打ち直してROM③を入れ直したときの案内（中身は setRom3PredictNote() が書く） -->
+                <div id="rom3-predict-note" style="display:none; font-weight:bold; margin-bottom:5px; font-size:13px; line-height:1.35; border-radius:5px; padding:5px 7px;"></div>
                 <div style="display:flex; gap:5px; align-items:flex-start;">
                     <div style="flex:1; min-width:0;">
                         <input
@@ -2906,6 +2909,7 @@
             fuzzyMatchedQr = null;
             setRomFuzzyNote(null);
             setRomFuzzyHighlight(false);
+            if (typeof setRom3PredictNote === 'function') setRom3PredictNote(null); // ★V24.6: 次の台へ／主基板なし／復元時も消す
         }
 
         // ----------------------------------------------------------------
@@ -3005,6 +3009,7 @@
             const rom1 = document.getElementById('rom-1');
             rom3PredictBaseR1 = rom1 ? (rom1.value || "").trim() : null;
             rom3UserTyped = false;
+            setRom3PredictNote(null);  // ★V24.6: 前の台の案内を持ち越さない
         }
 
         // 主基板QR → {model:機種キー, serial:連番(数値) or null}
@@ -3067,13 +3072,48 @@
             if (hit) {
                 rom3.value = hit.r3;
                 setRom3PredictStyle(true);
+                setRom3PredictNote('hit', r1, hit.r3);   // ★V24.6: 案内文を残す
                 showScanToast('🤖 ROM③予測（要照合）');   // トーストは短く（長いと工程名を隠す）
             } else {
                 rom3.value = "";                                   // 古い ROM③ を残さない
                 setRom3PredictStyle(false);
+                setRom3PredictNote('none', r1, '');      // ★V24.6: 案内文を残す
                 showScanToast('ROM③ 実績なし');
             }
             return true;
+        }
+
+        // ★V24.6: ROM③を入れ直したときの案内文
+        //   kind = 'hit'（過去データから入れた）/ 'none'（実績なし→空欄）/ null（消す）
+        //   ・ROM③を入れ直したら、②確定時の案内（赤「過去取得済み…」／紫「予測しました」）は
+        //     古い値の説明になるので消して、こちらだけを出す
+        function setRom3PredictNote(kind, r1, r3) {
+            const note = document.getElementById('rom3-predict-note');
+            if (!note) return;
+            if (!kind) { note.style.display = 'none'; note.innerHTML = ''; return; }
+
+            const hist = document.getElementById('rom-history-note');
+            if (hist) hist.style.display = 'none';
+            setRomFuzzyNote(null);
+
+            if (kind === 'hit') {
+                // 紫（予測と同じ色系）
+                note.style.color = '#ffffff';
+                note.style.background = 'linear-gradient(135deg,#7c3aed 0%,#a855f7 60%,#c026d3 100%)';
+                note.style.border = '1px solid #4c1d95';
+                note.innerHTML =
+                    '🤖 ROM①が ' + escHtml(r1) + ' に変わったので、同じ機種の過去データから' +
+                    'ROM③を <span style="font-size:16px;">' + escHtml(r3) + '</span> に入れ直しました。必ず実物と照合してください。';
+            } else {
+                // 黄（入力してほしい）
+                note.style.color = '#7c2d12';
+                note.style.background = '#fef3c7';
+                note.style.border = '2px solid #f59e0b';
+                note.innerHTML =
+                    '⚠ ROM①が ' + escHtml(r1) + ' に変わりました。同じ機種の過去データが無いので' +
+                    'ROM③を空欄にしました。実物を見て入力してください。';
+            }
+            note.style.display = 'block';
         }
 
         // ROM③ 欄だけ予測色（紫・点線枠）にする／戻す
@@ -3572,6 +3612,7 @@
             if (currentStep !== 3) return;
             rom3UserTyped = true;      // ★V24.5: 人が ROM③ を打った → 以後この台では自動入力しない
             setRom3PredictStyle(false);
+            setRom3PredictNote(null);  // ★V24.6: 人が打った値なので「入れ直しました」の案内は消す
 
             if (romComposing['rom-3'] || (ev && ev.isComposing)) return;
 
