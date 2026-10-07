@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V24.4</title>
+    <title>点検スキャナー V24.5</title>
 
+    <!-- ★V24.5: ROM①を人が打ち直したら、同じ機種で同じROM①の過去実績から ROM③ を自動入力（KYのみ）。
+         候補が複数なら主基板QRの連番が一番近い台を採用（全履歴で正解率約80%）。候補なしは ROM③ を空欄に -->
     <!-- ★V24.4: 電池節約。確認画面（読取値の確認・封印登録の確認）を出している間はライト消灯。
          戻る→再点灯／OK→次の画面がカメラを使う画面なら再点灯（ROM画面なら消灯のまま） -->
     <!-- ★V24.2: 進捗表示の色を「💾 自動保存」表示（保存済み）と同じ緑系に統一 -->
@@ -970,7 +972,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V24.4</div>
+        <div class="version-tag">V24.5</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -983,7 +985,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V24.4</div>
+            <div class="version-tag">V24.5</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号</div>
@@ -2976,6 +2978,114 @@
             });
         }
 
+        // ================================================================
+        // ★V24.5: ROM①（XXXX）を人が変えたら ROM③（ZZZ）を過去実績から自動入力
+        //   背景（宮崎さん）:
+        //     同じ機種でも ROM① が変わることがあり、ROM① が変わると ROM③ も変わるパターンが多い。
+        //     辞書で予測した ROM① を人が実物に合わせて直したとき、ROM③ が古いままだと
+        //     打ち直しの手間＆打ち間違いの元になる。
+        //   決め方（全履歴 KY 8,167件で検証。2026-10-07）:
+        //     ① 同じ機種 ＝ 主基板QRの先頭（13桁形式は先頭4文字／「/」形式は「/」より前）
+        //     ② 同じ ROM①（KYのみ）
+        //     ③ その中で主基板QRの連番（数字部分）が一番近い台の ROM③ を採用
+        //        → 正解率 80.5%（連番差10以内なら83%）
+        //        ※ 単純に「一番多い ROM③」だと 60% 止まり。ROM③ は製造ロットで変わるため近い連番が効く
+        //     ④ 同じ距離なら 端末で学習した実績(localStorage) → 埋め込み辞書の後ろ（＝新しい）を優先
+        //   候補なし → ROM③ を空欄にする（古い ROM③ が残ると気づかず登録してしまうため）
+        //   いつ動くか:
+        //     ・ROM① が4桁になり、②主基QR確定時の ROM①（辞書／予測／1台前）と違う値になったとき
+        //     ・KY のときだけ（EAI は ROM③ 無し）
+        //     ・この台で人が ROM③ を手で打っていたら上書きしない
+        // ================================================================
+        let rom3PredictBaseR1 = null;   // ②確定時点の ROM①（これと違えば「人が変えた」）
+        let rom3UserTyped = false;      // この台で人が ROM③ を打ったか
+
+        // ②主基QR確定時（ROM画面へ入る時）に呼ぶ：基準のROM①を記録し、手打ちフラグを戻す
+        function resetRom3Predict() {
+            const rom1 = document.getElementById('rom-1');
+            rom3PredictBaseR1 = rom1 ? (rom1.value || "").trim() : null;
+            rom3UserTyped = false;
+        }
+
+        // 主基板QR → {model:機種キー, serial:連番(数値) or null}
+        function splitMainboardQr(qr) {
+            const q = normalizeQrKey(qr);
+            if (!q || q === "なし") return null;
+            if (q.includes("/")) {
+                const parts = q.split("/");
+                const num = /^\d+$/.test(parts[1] || "") ? parseInt(parts[1], 10) : null;
+                return { model: parts[0], serial: num };
+            }
+            const m = q.match(/^([A-Z]\d[A-Z]{2})(\d{9})$/);   // 13桁形式
+            if (m) return { model: m[1], serial: parseInt(m[2], 10) };
+            return { model: q.slice(0, 4), serial: null };      // 形式外は先頭4文字だけ使う
+        }
+
+        // ROM① から ROM③ を探す。見つかれば {r3, qr, diff} / 無ければ null
+        function findRom3ByRom1(mainBoardQr, r1) {
+            const me = splitMainboardQr(mainBoardQr);
+            if (!me || !/^\d{4}$/.test(r1)) return null;
+
+            let best = null;   // {r3, qr, diff, rank}
+            // rank: 小さいほど優先。端末学習=0 / 埋め込み辞書=1（同じ距離なら後ろ＝新しいほうを採用）
+            const consider = function (qr, rom, rank) {
+                const m = (typeof rom === "string") ? rom.match(ROM_VALUE_PATTERN) : null;
+                if (!m || m[2] !== "KY" || m[1] !== r1 || !m[3]) return;   // 同じROM①のKYで ROM③ ありだけ
+                const k = splitMainboardQr(qr);
+                if (!k || k.model !== me.model) return;                    // 同じ機種だけ
+                if (normalizeQrKey(qr) === normalizeQrKey(mainBoardQr)) return; // 自分自身は除く
+                // 連番差。どちらかが連番なしなら最大扱い（候補にはするが近い台に負ける）
+                const diff = (me.serial !== null && k.serial !== null)
+                    ? Math.abs(me.serial - k.serial) : Number.MAX_SAFE_INTEGER;
+                if (!best || diff < best.diff || (diff === best.diff && rank <= best.rank)) {
+                    best = { r3: m[3], qr: qr, diff: diff, rank: rank };
+                }
+            };
+
+            // 埋め込み辞書（for...in の順＝取得日の古い→新しい。同距離は後ろが勝つ）
+            for (const qr in MAINBOARD_ROM_HISTORY) consider(qr, MAINBOARD_ROM_HISTORY[qr], 1);
+            // 端末で学習した実績（最優先）
+            const local = loadLocalRomHistory();
+            for (const qr in local) consider(qr, local[qr], 0);
+
+            return best;
+        }
+
+        // ROM① が4桁になったときに呼ぶ（KYのみ）。ROM③ を書き換えたら true
+        function autoFillRom3FromRom1(r1) {
+            if (currentStep !== 3) return false;
+            if (getRomType() !== "KY") return false;
+            if (rom3UserTyped) return false;                       // 人が打った ROM③ は触らない
+            if (rom3PredictBaseR1 !== null && r1 === rom3PredictBaseR1) return false; // ROM① が変わっていない
+            const mb = currentData ? currentData.mainBoardId : null;
+            if (!mb || mb === "なし") return false;                // 主基板なし＝機種が分からない
+
+            const rom3 = document.getElementById('rom-3');
+            if (!rom3) return false;
+
+            const hit = findRom3ByRom1(mb, r1);
+            if (hit) {
+                rom3.value = hit.r3;
+                setRom3PredictStyle(true);
+                showScanToast('🤖 ROM③予測（要照合）');   // トーストは短く（長いと工程名を隠す）
+            } else {
+                rom3.value = "";                                   // 古い ROM③ を残さない
+                setRom3PredictStyle(false);
+                showScanToast('ROM③ 実績なし');
+            }
+            return true;
+        }
+
+        // ROM③ 欄だけ予測色（紫・点線枠）にする／戻す
+        function setRom3PredictStyle(on) {
+            const el = document.getElementById('rom-3');
+            if (!el) return;
+            el.style.backgroundColor = on ? '#f5f3ff' : '';
+            el.style.borderColor     = on ? '#7c3aed' : '';
+            el.style.borderWidth     = on ? '2px' : '';
+            el.style.borderStyle     = on ? 'dashed' : '';
+        }
+
         // 履歴ヒット時: KY/EAI切替＋ROM①③を自動入力してtrueを返す
         function applyRomFromHistory(mainBoardQr) {
             // ★ V15.6/V15.6: 毎回リセット（前の台の自動入力状態・赤文字・欄の色を持ち越さない）
@@ -3428,6 +3538,7 @@
 
             const type = getRomType();
             if (type === "KY") {
+                autoFillRom3FromRom1(r1);   // ★V24.5: ROM①を変えたら ROM③ を過去実績から入れ直す
                 setTimeout(() => focusRom3WithKeyboard(), 120);
             } else if (type === "EAI") {
                 setTimeout(() => handleManualInput(), 120);
@@ -3459,6 +3570,8 @@
         // ROM③ 入力イベント（数字モード=即時 / 音声モード=デバウンス）
         function handleRom3Input(ev) {
             if (currentStep !== 3) return;
+            rom3UserTyped = true;      // ★V24.5: 人が ROM③ を打った → 以後この台では自動入力しない
+            setRom3PredictStyle(false);
 
             if (romComposing['rom-3'] || (ev && ev.isComposing)) return;
 
@@ -3618,6 +3731,7 @@
                 // ★ V16.3: 判別マップにも過去履歴にも無い＝過去に例の無い主基板QR → 赤文字警告
                 // ★ V16.9: 類似QRから予測できた場合はオレンジのバナーで案内するため赤文字は出さない
                 setUnknownMainboardNote(!typeMatched && !histHit && !fuzzyHit);
+                resetRom3Predict();   // ★V24.5: この時点のROM①を基準に「人が変えたか」を判定
                 currentStep = 3;
                 updateUI();
                 focusRomInput();
