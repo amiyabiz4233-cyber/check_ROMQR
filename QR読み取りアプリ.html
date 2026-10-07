@@ -4,8 +4,10 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V24.3</title>
+    <title>点検スキャナー V24.4</title>
 
+    <!-- ★V24.4: 電池節約。確認画面（読取値の確認・封印登録の確認）を出している間はライト消灯。
+         戻る→再点灯／OK→次の画面がカメラを使う画面なら再点灯（ROM画面なら消灯のまま） -->
     <!-- ★V24.2: 進捗表示の色を「💾 自動保存」表示（保存済み）と同じ緑系に統一 -->
     <!-- ★V24.1: 工程名と再起動の間に「完了台数（上段）」「台/10分（下段）」を表示 -->
     <!-- ★V24.0: 画面上部の工程名を短縮（①台番号／②主基QR／③ROM／④封印） -->
@@ -968,7 +970,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V24.3</div>
+        <div class="version-tag">V24.4</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -981,7 +983,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V24.3</div>
+            <div class="version-tag">V24.4</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号</div>
@@ -2020,6 +2022,30 @@
                     updateTorchButton();
                 }
             } catch (e) {}
+        }
+
+        // ========================================
+        // ★V24.4: 確認画面を閉じたあとの再点灯
+        //   ・確認画面を出している間は forceTorchOff() で消灯（torchDesired＝点けたい意図は保持）
+        //   ・閉じたら、カメラが見えている工程（①②④）なら restoreTorchIfDesired() で再点灯
+        //     ③ROM入力はカメラ非表示なので消灯のまま
+        //   ・iOSは消灯直後の torch:true が効かないことがあるため、400ms後にもう1回かける
+        //     （そのとき別の確認画面が開いていたら点けない）
+        // ========================================
+        function isAnyConfirmOpen() {
+            const ids = ['confirm-overlay', 'seal-confirm-overlay'];
+            return ids.some(id => {
+                const el = document.getElementById(id);
+                return el && el.style.display === 'flex';
+            });
+        }
+        function relightAfterConfirm() {
+            if (currentStep === 3) return;          // ROM入力中はカメラ非表示＝点けない
+            if (isAnyConfirmOpen()) return;          // まだ確認画面が出ている
+            restoreTorchIfDesired();
+            setTimeout(() => {
+                if (currentStep !== 3 && !isAnyConfirmOpen()) restoreTorchIfDesired();
+            }, 400);
         }
 
         // ========================================
@@ -3558,11 +3584,15 @@
             }
 
             document.getElementById('confirm-overlay').style.display = 'flex';
+            forceTorchOff();      // ★V24.4: 確認画面の間はライト消灯（電池節約）
             scrollToTopInstant(); // ★ V16.6
         }
 
         function approveValue() {
             document.getElementById('confirm-overlay').style.display = 'none';
+            // ★V24.4: 工程を進めた後（この関数の最後の方の updateUI 後）に再点灯をかける。
+            //   次が③ROM画面なら relightAfterConfirm 側で点けない
+            setTimeout(relightAfterConfirm, 0);
 
             if (currentStep === 1) {
                 currentData.machineId = pendingValue;
@@ -3650,6 +3680,7 @@
             if (modal) { modal.style.border = (c.state === 'wait') ? '6px solid #dc2626' : 'none'; }
 
             document.getElementById('seal-confirm-overlay').style.display = 'flex';
+            forceTorchOff();      // ★V24.4: 確認画面の間はライト消灯（電池節約）
             scrollToTopInstant();
         }
 
@@ -3662,11 +3693,13 @@
         function confirmSealRegister() {
             closeSealConfirm();
             finishMachine();
+            relightAfterConfirm();   // ★V24.4: 次の台の①台番（カメラ画面）で再点灯
         }
 
         // 戻る → 何もしない（封印スキャンの画面に留まる）
         function cancelSealRegister() {
             closeSealConfirm();
+            relightAfterConfirm();   // ★V24.4: ④封印の画面に戻るので再点灯
         }
 
         // ★ 赤い確認画面で実行する「戻る処理」を保持
@@ -3687,6 +3720,7 @@
             try {
                 if (html5QrCode && html5QrCode.resume) html5QrCode.resume();
             } catch (e) {}
+            relightAfterConfirm();   // ★V24.4: 同じ画面に戻るので再点灯
         }
 
         // ★ 赤警告で「戻る」確定：登録された戻る処理を実行
