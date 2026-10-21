@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V26.5</title>
+    <title>点検スキャナー V26.6</title>
 
     <!-- ★V25.0: 予備保存（IndexedDB）。竹内_点検スキャナーの「念のための二重保存」を移植。画面にボタン等は出さない。
          強制終了で主の保存（localStorage）が書き遅れても、起動時に予備の方が台数が多ければそちらを戻し、そのときだけ知らせる -->
@@ -1002,7 +1002,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V26.5</div>
+        <div class="version-tag">V26.6</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -1020,7 +1020,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V26.5</div>
+            <div class="version-tag">V26.6</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号</div>
@@ -1116,18 +1116,18 @@
                 </div>
                 <!-- ★V26.4: HTMLテンキー（iPhoneのキーボードの代わり）。押すといま青枠の欄（ROM①/ROM③）に入る -->
                 <div id="rom-tenkey">
-                    <button type="button" onpointerdown="event.preventDefault(); romTenkey('1')">1</button>
-                    <button type="button" onpointerdown="event.preventDefault(); romTenkey('2')">2</button>
-                    <button type="button" onpointerdown="event.preventDefault(); romTenkey('3')">3</button>
-                    <button type="button" onpointerdown="event.preventDefault(); romTenkey('4')">4</button>
-                    <button type="button" onpointerdown="event.preventDefault(); romTenkey('5')">5</button>
-                    <button type="button" onpointerdown="event.preventDefault(); romTenkey('6')">6</button>
-                    <button type="button" onpointerdown="event.preventDefault(); romTenkey('7')">7</button>
-                    <button type="button" onpointerdown="event.preventDefault(); romTenkey('8')">8</button>
-                    <button type="button" onpointerdown="event.preventDefault(); romTenkey('9')">9</button>
-                    <button type="button" class="tk-fn" onpointerdown="event.preventDefault(); romTenkey('C')">クリア</button>
-                    <button type="button" onpointerdown="event.preventDefault(); romTenkey('0')">0</button>
-                    <button type="button" class="tk-fn" onpointerdown="event.preventDefault(); romTenkey('BS')">⌫</button>
+                    <button type="button" ontouchstart="event.preventDefault(); romTenkey('1')" onmousedown="event.preventDefault(); romTenkey('1')">1</button>
+                    <button type="button" ontouchstart="event.preventDefault(); romTenkey('2')" onmousedown="event.preventDefault(); romTenkey('2')">2</button>
+                    <button type="button" ontouchstart="event.preventDefault(); romTenkey('3')" onmousedown="event.preventDefault(); romTenkey('3')">3</button>
+                    <button type="button" ontouchstart="event.preventDefault(); romTenkey('4')" onmousedown="event.preventDefault(); romTenkey('4')">4</button>
+                    <button type="button" ontouchstart="event.preventDefault(); romTenkey('5')" onmousedown="event.preventDefault(); romTenkey('5')">5</button>
+                    <button type="button" ontouchstart="event.preventDefault(); romTenkey('6')" onmousedown="event.preventDefault(); romTenkey('6')">6</button>
+                    <button type="button" ontouchstart="event.preventDefault(); romTenkey('7')" onmousedown="event.preventDefault(); romTenkey('7')">7</button>
+                    <button type="button" ontouchstart="event.preventDefault(); romTenkey('8')" onmousedown="event.preventDefault(); romTenkey('8')">8</button>
+                    <button type="button" ontouchstart="event.preventDefault(); romTenkey('9')" onmousedown="event.preventDefault(); romTenkey('9')">9</button>
+                    <button type="button" class="tk-fn" ontouchstart="event.preventDefault(); romTenkey('C')" onmousedown="event.preventDefault(); romTenkey('C')">クリア</button>
+                    <button type="button" ontouchstart="event.preventDefault(); romTenkey('0')" onmousedown="event.preventDefault(); romTenkey('0')">0</button>
+                    <button type="button" class="tk-fn" ontouchstart="event.preventDefault(); romTenkey('BS')" onmousedown="event.preventDefault(); romTenkey('BS')">⌫</button>
                 </div>
                 <!-- ★V26.3: 数字入力／音声入力の切替ボタンは「前へ戻る」の下へ移動 -->
                 <button class="btn-secondary" onclick="skipRomInput()">ROM入力スキップ</button>
@@ -3694,17 +3694,24 @@
         //   ・欄にフォーカスが無い時は、欄をタップした時と同じく「全選択」してから打つ
         //   ・最後に input イベントを出す → 4桁で自動送り・ROM③予測などは今までの処理がそのまま動く
         // ========================================
+        let romTkReplace = true;   // ★V26.6: true＝次のテンキー入力で欄の中身を置き換える（欄に入った直後）
         function romTenkey(k) {
             if (currentStep !== 3) return;
             const el = document.getElementById(activeRomField === 'rom-3' ? 'rom-3' : 'rom-1');
             if (!el) return;
-            if (document.activeElement !== el) {
-                try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); }
-                try { el.select(); } catch (e) {}
-            }
             let v = el.value || "";
-            let st = (typeof el.selectionStart === "number") ? el.selectionStart : v.length;
-            let en = (typeof el.selectionEnd === "number") ? el.selectionEnd : v.length;
+            let st, en;
+            if (document.activeElement === el && typeof el.selectionStart === "number") {
+                // 欄にフォーカスがある：選択範囲（全選択なら置換、カーソルならそこへ挿入）に従う
+                st = el.selectionStart; en = el.selectionEnd;
+            } else if (romTkReplace) {
+                // ★V26.6: フォーカスが無い＋欄に入った直後 → 中身を置き換える
+                st = 0; en = v.length;
+            } else {
+                // ★V26.6: フォーカスが無い → 末尾に足す（以前は focus＋全選択して毎回上書き＝1桁しか入らなかった）
+                st = v.length; en = v.length;
+            }
+            romTkReplace = false;
             if (k === "C") {                       // クリア：欄を空にする
                 v = ""; st = 0;
             } else if (k === "BS") {               // ⌫：選択があれば選択を消す、無ければカーソルの前の1文字
@@ -3870,6 +3877,7 @@
         function setActiveRomField(id) {
             if (id !== 'rom-1' && id !== 'rom-3') return;
             activeRomField = id;
+            romTkReplace = true;   // ★V26.6: 欄に入った直後のテンキー1文字目は置換（全選択→上書きと同じ動き）
 
             // 選択中の欄だけ青枠にする
             ['rom-1', 'rom-3'].forEach(function (k) {
