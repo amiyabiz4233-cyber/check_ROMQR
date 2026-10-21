@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V26.9</title>
+    <title>点検スキャナー V27.0</title>
 
     <!-- ★V25.0: 予備保存（IndexedDB）。竹内_点検スキャナーの「念のための二重保存」を移植。画面にボタン等は出さない。
          強制終了で主の保存（localStorage）が書き遅れても、起動時に予備の方が台数が多ければそちらを戻し、そのときだけ知らせる -->
@@ -217,6 +217,38 @@
         }
         #rom-tenkey button:active { background: #dbeafe; box-shadow: none; transform: translateY(2px); }
         #rom-tenkey button.tk-fn { font-size: 20px; background: #f1f5f9; color: #374151; }
+
+        /* ★V27.0: iPhoneテンキー ⇔ HTMLテンキー のトグルスイッチ（数字モードの時だけ表示） */
+        #rom-tk-switch-row {
+            display: none;                 /* 表示は applyRomKbMode() が flex に切り替える */
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            margin: 6px 0 2px;
+            font-size: 16px;
+            font-weight: bold;
+            -webkit-user-select: none; user-select: none;
+        }
+        #rom-tk-switch-row .tks-lbl { color: #9ca3af; white-space: nowrap; }   /* 選ばれていない側は灰色。ラベルは折り返さない */
+        #rom-tk-switch-row .tks-lbl.tks-on { color: #111827; }     /* 選ばれている側は黒 */
+        #rom-tk-switch {
+            position: relative;
+            width: 62px; height: 34px; min-height: 0;
+            padding: 0; margin: 0;
+            border: none; border-radius: 17px;
+            background: #9ca3af;           /* 左（iPhone）＝灰 */
+            transition: background 0.2s;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #rom-tk-switch.on { background: #34c759; }   /* 右（HTML）＝緑 */
+        #rom-tk-switch .tks-knob {
+            position: absolute; top: 2px; left: 2px;
+            width: 30px; height: 30px; border-radius: 50%;
+            background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,0.35);
+            transition: left 0.2s;
+        }
+        #rom-tk-switch.on .tks-knob { left: 30px; }
 
         /* ★ ROMキーボード切替ボタン（目立たせる＋モードで色変化） */
         #rom-kb-toggle {
@@ -1007,7 +1039,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V26.9</div>
+        <div class="version-tag">V27.0</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -1025,7 +1057,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V26.9</div>
+            <div class="version-tag">V27.0</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号</div>
@@ -1133,6 +1165,12 @@
                     <button type="button" class="tk-fn" ontouchstart="event.preventDefault(); romTenkey('C')" onmousedown="event.preventDefault(); romTenkey('C')">クリア</button>
                     <button type="button" ontouchstart="event.preventDefault(); romTenkey('0')" onmousedown="event.preventDefault(); romTenkey('0')">0</button>
                     <button type="button" class="tk-fn" ontouchstart="event.preventDefault(); romTenkey('BS')" onmousedown="event.preventDefault(); romTenkey('BS')">⌫</button>
+                </div>
+                <!-- ★V27.0: テンキーの切替スイッチ（左=iPhoneのテンキー／右=画面のHTMLテンキー）。数字モードの時だけ表示 -->
+                <div id="rom-tk-switch-row">
+                    <span class="tks-lbl" id="tks-lbl-ios" onclick="toggleRomTenkeyType()">📱 iPhone</span>
+                    <button type="button" id="rom-tk-switch" role="switch" aria-label="テンキー切替" onmousedown="event.preventDefault();" onclick="toggleRomTenkeyType()"><span class="tks-knob"></span></button>
+                    <span class="tks-lbl" id="tks-lbl-html" onclick="toggleRomTenkeyType()">🔢 画面テンキー</span>
                 </div>
                 <!-- ★V26.3: 数字入力／音声入力の切替ボタンは「前へ戻る」の下へ移動 -->
                 <button class="btn-secondary" onclick="skipRomInput()">ROM入力スキップ</button>
@@ -3669,9 +3707,21 @@
         function applyRomKbMode() {
             const mode = getRomKbMode();
             // ★V26.4: 数字モードは画面のテンキーで打つので iPhone のキーボードは出さない（none）
-            const im = (mode === "numeric") ? "none" : "text";
+            // ★V27.0: 数字モードの中で「HTMLテンキー／iPhoneテンキー」をスイッチで選べる
+            //          HTML   → inputmode none   ＋ 画面のテンキー表示
+            //          iPhone → inputmode numeric＋ 画面のテンキー非表示（V26.3 までと同じ）
+            const useHtmlTk = (mode === "numeric" && getRomTenkeyType() === "html");
+            const im = (mode === "numeric") ? (useHtmlTk ? "none" : "numeric") : "text";
             const tk = document.getElementById('rom-tenkey');
-            if (tk) tk.style.display = (mode === "numeric") ? "grid" : "none";
+            if (tk) tk.style.display = useHtmlTk ? "grid" : "none";
+            // スイッチ本体：数字モードの時だけ出す。右（緑）＝HTML、左（灰）＝iPhone
+            const swRow = document.getElementById('rom-tk-switch-row');
+            if (swRow) swRow.style.display = (mode === "numeric") ? "flex" : "none";
+            const sw = document.getElementById('rom-tk-switch');
+            if (sw) { sw.classList.toggle('on', useHtmlTk); sw.setAttribute('aria-checked', useHtmlTk ? 'true' : 'false'); }
+            const lIos = document.getElementById('tks-lbl-ios'), lHtml = document.getElementById('tks-lbl-html');
+            if (lIos) lIos.classList.toggle('tks-on', !useHtmlTk);
+            if (lHtml) lHtml.classList.toggle('tks-on', useHtmlTk);
 
             ['rom-1', 'rom-3'].forEach(id => {
                 const el = document.getElementById(id);
@@ -3728,6 +3778,31 @@
             el.value = v;
             try { el.setSelectionRange(st, st); } catch (e) {}
             el.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+
+        // ========================================
+        // ★V27.0: テンキーの種類（"html"＝画面のテンキー / "ios"＝iPhoneの数字キーボード）
+        //   端末に記憶。初めては "html"。
+        // ========================================
+        const ROM_TK_TYPE_KEY = "rom_tenkey_type";
+        function getRomTenkeyType() {
+            try { return (localStorage.getItem(ROM_TK_TYPE_KEY) === "ios") ? "ios" : "html"; } catch (e) { return "html"; }
+        }
+        function toggleRomTenkeyType() {
+            const next = (getRomTenkeyType() === "html") ? "ios" : "html";
+            try { localStorage.setItem(ROM_TK_TYPE_KEY, next); } catch (e) {}
+            applyRomKbMode();
+            // inputmode の変更は欄に入り直さないと iOS に反映されない → いま青枠の欄で blur→focus。
+            // タップの処理の中なので、iPhoneテンキーに切り替えた時はここでキーボードが出る。
+            // blur で ROM①→ROM③ の自動送り（handleRom1Blur）が走らないよう、スピン操作と同じ目印を付けておく
+            if (currentStep !== 3) return;
+            const id = (activeRomField === 'rom-3') ? 'rom-3' : 'rom-1';
+            const el = document.getElementById(id);
+            if (!el) return;
+            romSpinGuard[id] = Date.now();
+            el.blur();
+            try { el.focus({ preventScroll: true }); } catch (e) { el.focus(); }
+            try { el.select(); } catch (e) {}
         }
 
         function setRomKbMode(mode) {
