@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V27.0</title>
+    <title>点検スキャナー V27.1</title>
 
     <!-- ★V25.0: 予備保存（IndexedDB）。竹内_点検スキャナーの「念のための二重保存」を移植。画面にボタン等は出さない。
          強制終了で主の保存（localStorage）が書き遅れても、起動時に予備の方が台数が多ければそちらを戻し、そのときだけ知らせる -->
@@ -97,6 +97,32 @@
             -webkit-tap-highlight-color: transparent;
         }
         .seal-register-btn:active { background-color: #16a34a; }
+
+        /* ★V27.1: ④封印スキャン中の枚数表示（カメラ枠の右上。上の封印登録ボタンの右の空きに置く） */
+        #seal-count-badge {
+            display: none;                 /* 表示は updateSealCountBadge() が切り替える（④封印の画面だけ） */
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            width: 60px;                   /* 封印登録ボタンの right:80px の内側に収まる幅 */
+            height: 60px;
+            border-radius: 12px;
+            background: rgba(0,0,0,0.65);
+            border: 2px solid #fff;
+            color: #fff;
+            text-align: center;
+            line-height: 1;
+            z-index: 101;                  /* 封印登録ボタン（100）より手前 */
+            pointer-events: none;          /* タップは素通り */
+            box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+            box-sizing: border-box;
+            padding-top: 7px;
+        }
+        #seal-count-badge .scb-num  { display: block; font-size: 30px; font-weight: bold; }
+        #seal-count-badge .scb-unit { display: block; font-size: 12px; font-weight: bold; margin-top: 2px; }
+        #seal-count-badge.has { background: rgba(21,128,61,0.85); }   /* 1枚以上は緑 */
+        #seal-count-badge.bump { animation: scbBump 0.35s ease-out; } /* 増えた瞬間に一瞬大きく */
+        @keyframes scbBump { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
 
         /* 上＝カメラ枠の上端 / 下＝左右のライトと同じ高さ（ライトとライトの間） */
         #btn-seal-register-top    { top: 10px; }
@@ -1039,7 +1065,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V27.0</div>
+        <div class="version-tag">V27.1</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -1057,7 +1083,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V27.0</div>
+            <div class="version-tag">V27.1</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号</div>
@@ -1078,6 +1104,8 @@
                          表示制御は updateSealRegisterButton() が一括で行う。 -->
                     <button id="btn-seal-register-top"    type="button" class="seal-register-btn" onclick="askSealRegister()">封印登録</button>
                     <button id="btn-seal-register-bottom" type="button" class="seal-register-btn" onclick="askSealRegister()">封印登録</button>
+                    <!-- ★V27.1: ④封印スキャン中の枚数（右上）。中身は updateSealCountBadge() が書く -->
+                    <div id="seal-count-badge"><span class="scb-num">0</span><span class="scb-unit">枚</span></div>
                 </div>
                 <button id="btn-skip" class="btn-secondary" style="display:none;" onclick="skipStep()">主基板/封印なし</button>
             </div>
@@ -4448,7 +4476,24 @@
         // ========================================
         const SEAL_REGISTER_BTN_IDS = ['btn-seal-register-top', 'btn-seal-register-bottom'];
 
+        // ★V27.1: カメラ右上の枚数表示。④封印の画面だけ出す。"なし" は数えない。増えた時だけ一瞬大きくする
+        let lastSealBadgeCount = -1;
+        function updateSealCountBadge() {
+            const badge = document.getElementById('seal-count-badge');
+            if (!badge) return;
+            const n = ((currentData && currentData.seals) ? currentData.seals : []).filter(v => v && v !== "なし").length;
+            badge.style.display = (currentStep === 4) ? 'block' : 'none';
+            const num = badge.querySelector('.scb-num');
+            if (num) num.textContent = String(n);
+            badge.classList.toggle('has', n > 0);
+            if (currentStep === 4 && n > lastSealBadgeCount && lastSealBadgeCount >= 0) {
+                badge.classList.remove('bump'); void badge.offsetWidth; badge.classList.add('bump');   // アニメーションをやり直す
+            }
+            lastSealBadgeCount = (currentStep === 4) ? n : -1;   // 画面を離れたら数え直し（次の台の0枚目で弾まない）
+        }
+
         function updateSealRegisterButton() {
+            updateSealCountBadge();   // ★V27.1: 枚数表示も同じタイミングで更新
             const sealCount = (currentData && currentData.seals) ? currentData.seals.length : 0;
             const show = (currentStep === 4) && (sealCount > 0);
 
