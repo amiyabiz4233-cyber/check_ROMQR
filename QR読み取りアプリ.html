@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V26.6</title>
+    <title>点検スキャナー V26.7</title>
 
     <!-- ★V25.0: 予備保存（IndexedDB）。竹内_点検スキャナーの「念のための二重保存」を移植。画面にボタン等は出さない。
          強制終了で主の保存（localStorage）が書き遅れても、起動時に予備の方が台数が多ければそちらを戻し、そのときだけ知らせる -->
@@ -359,7 +359,7 @@
 
         /* ★ ROM確定ボタンを約3倍の大きさに */
         #btn-rom-confirm {
-            min-height: 110px;   /* ★V26.5: 150→110px。テンキーを置いたので少し低く（右の十字キーも同じ高さに揃う） */
+            min-height: 99px;    /* ★V26.7: 110→99px（90%）。★V26.5: 150→110px。右の十字キーも同じ高さに揃う */
             font-size: 36px;
             padding: 20px;
         }
@@ -1002,7 +1002,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V26.6</div>
+        <div class="version-tag">V26.7</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -1020,7 +1020,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V26.6</div>
+            <div class="version-tag">V26.7</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号</div>
