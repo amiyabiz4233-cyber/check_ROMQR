@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V26.0</title>
+    <title>点検スキャナー V26.1</title>
 
     <!-- ★V25.0: 予備保存（IndexedDB）。竹内_点検スキャナーの「念のための二重保存」を移植。画面にボタン等は出さない。
          強制終了で主の保存（localStorage）が書き遅れても、起動時に予備の方が台数が多ければそちらを戻し、そのときだけ知らせる -->
@@ -978,7 +978,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V26.0</div>
+        <div class="version-tag">V26.1</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -994,7 +994,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V26.0</div>
+            <div class="version-tag">V26.1</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号</div>
@@ -1915,8 +1915,10 @@
             document.getElementById('rom-1').value = "";
             document.getElementById('rom-3').value = "";
 
+            // ★V26.1: 起動途中のカメラも残さない（完了を待ってから完全に片付ける）
             try {
-                if (html5QrCode) await html5QrCode.stop();
+                await waitMainScannerIdle();
+                await disposeMainScanner();
             } catch (e) {}
             torchOn = false;
             torchDesired = true; // ★ V16.7: 次回起動時も初期値ON
@@ -2102,7 +2104,63 @@
             saveState(); // ★ 開始時点で保存
         }
 
-        async function initScanner() {
+        // ========================================
+        // ★V26.1: カメラ2重起動の修正
+        // ----------------------------------------
+        // 症状：#reader にカメラ映像が上下2つ並ぶことがある（iPhone）
+        // 原因：initScanner() に多重実行の歯止めが無かった。
+        //   ・点検開始直後は zxing-wasm の準備待ち（最大4秒）で initScanner が止まっている
+        //   ・その間に focus / pageshow / visibilitychange の復帰処理が「video が無い＝停止」と判定して
+        //     もう1回 initScanner を呼ぶ。再起動ボタン連打・修正画面を閉じた直後も同じ
+        //   ・さらに start() を await していなかったので、起動途中のカメラは stop() が失敗して残り、
+        //     new Html5Qrcode("reader") がもう1本の映像を足していた
+        // 対策：
+        //   ① initScanner は同時に1本だけ。実行中に呼ばれたら、今の起動の完了を待つだけ（新しく作らない）
+        //   ② 前のカメラは stop → clear → 残った映像トラックも止める → #reader を空にする、まで必ずやる
+        //   ③ start() の完了まで待つ
+        // ========================================
+        let mainScannerInitPromise = null;   // 実行中の initScanner（null＝実行していない）
+
+        function initScanner() {
+            if (mainScannerInitPromise) {
+                console.log("[V26.1] initScanner 実行中のため相乗り（2本目は作らない）");
+                return mainScannerInitPromise;
+            }
+            mainScannerInitPromise = (async () => {
+                try { await initScannerCore(); }
+                finally { mainScannerInitPromise = null; }
+            })();
+            return mainScannerInitPromise;
+        }
+
+        // 実行中の initScanner があれば終わるまで待つ（止める処理の前に呼ぶ）
+        async function waitMainScannerIdle() {
+            if (mainScannerInitPromise) { try { await mainScannerInitPromise; } catch (e) {} }
+        }
+
+        // 本体カメラを完全に片付ける（何度呼んでも安全）
+        async function disposeMainScanner() {
+            const sc = html5QrCode;
+            html5QrCode = null;
+            if (sc) {
+                try { await sc.stop(); } catch (e) {}    // 起動途中・停止済みだと例外になるが無視
+                try { sc.clear(); } catch (e) {}         // html5-qrcode が作った video 等を消す
+            }
+            // 取り残された映像があればトラックごと止める（iPhoneのカメラを掴みっぱなしにしない）
+            const reader = document.getElementById('reader');
+            if (reader) {
+                reader.querySelectorAll('video').forEach(v => {
+                    try {
+                        const st = v.srcObject;
+                        if (st && st.getTracks) st.getTracks().forEach(t => { try { t.stop(); } catch (e) {} });
+                        v.srcObject = null;
+                    } catch (e) {}
+                });
+                reader.innerHTML = "";                   // 2本目の映像を物理的に消す
+            }
+        }
+
+        async function initScannerCore() {
             // ★ V15.7修正: CDN(html5-qrcode)を async 読込にしたため、
             //   点検開始が早すぎるとまだ未定義の可能性がある。読込完了まで最大5秒リトライ。
             if (typeof Html5Qrcode === 'undefined') {
@@ -2115,11 +2173,8 @@
                 }
             }
 
-            if (html5QrCode) {
-                try {
-                    await html5QrCode.stop();
-                } catch (e) {}
-            }
+            // ★V26.1: 前のカメラを確実に片付ける（stop失敗でも映像を残さない）
+            await disposeMainScanner();
 
             torchOn = false;
             torchDesired = true; // ★ V16.7: カメラ再起動時は初期値ON に戻す
@@ -2138,15 +2193,26 @@
                 }
             };
 
-            html5QrCode.start(
-                { facingMode: "environment" },
-                config,
-                (text) => {
-                    handleScannedText(text);
-                }
-            ).then(() => {
+            // ★V26.1: start の完了まで待つ（待たないと、起動途中に次の initScanner が来て
+            //         stop できずに2本目の映像が #reader に足されていた＝2重起動の原因）
+            try {
+                await html5QrCode.start(
+                    { facingMode: "environment" },
+                    config,
+                    (text) => {
+                        handleScannedText(text);
+                    }
+                );
                 setTimeout(checkTorchSupport, 500);
-            }).catch(e => console.error(e));
+            } catch (e) {
+                console.error(e);
+            }
+
+            // ★V26.1: 起動している間に「店舗選択へ戻る」「修正画面を開く」が起きていたら、すぐ止める
+            const mainApp = document.getElementById('main-app');
+            if ((mainApp && mainApp.style.display === 'none') || editMainStopped) {
+                await disposeMainScanner();
+            }
         }
 
         function getTorchButtons() {
@@ -4375,8 +4441,9 @@
             if (!isEditOpen()) return;   // 待っている間に修正画面が閉じられた
 
             // ① 本体スキャナーを止める（同時に2つは使えない）
-            if (html5QrCode && !editMainStopped) {
-                try { await html5QrCode.stop(); } catch (e) {}
+            if (!editMainStopped) {
+                // ★V26.1: 起動途中の本体カメラも待ってから完全に片付ける（修正画面と映像が2つにならない）
+                try { await waitMainScannerIdle(); await disposeMainScanner(); } catch (e) {}
             }
             editMainStopped = true;      // ★ V21.9: 修正画面を閉じるまで本体は止めたまま
 
