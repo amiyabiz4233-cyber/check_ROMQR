@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V27.6</title>
+    <title>点検スキャナー V27.7</title>
 
     <!-- ★V25.0: 予備保存（IndexedDB）。竹内_点検スキャナーの「念のための二重保存」を移植。画面にボタン等は出さない。
          強制終了で主の保存（localStorage）が書き遅れても、起動時に予備の方が台数が多ければそちらを戻し、そのときだけ知らせる -->
@@ -223,14 +223,14 @@
             margin: 8px 0 4px;
         }
         #rom-tenkey button {
-            height: 36px;   /* ★V26.9: 49→36px。★V26.8: 58→49px（85%） */
+            height: var(--tk-h, 36px);   /* ★V27.7: 高さ切替ボタンで 36/46/56px。★V26.9: 49→36px。★V26.8: 58→49px（85%） */
             padding: 0;                  /* ★V26.9: 全体のボタン用の余白を消す（残すと低いボタンで文字が下へずれる） */
             display: flex;               /* ★V26.9: 数字・クリア・⌫ を上下左右の中央に */
             align-items: center;
             justify-content: center;
             line-height: 1;
             margin: 0;
-            font-size: 28px;
+            font-size: var(--tk-fs, 28px);  /* ★V27.7: 高さに合わせて 28/30/32px */
             font-weight: bold;
             border: 1px solid #cbd5e1;
             border-radius: 10px;
@@ -244,12 +244,53 @@
         #rom-tenkey button:active { background: #dbeafe; box-shadow: none; transform: translateY(2px); }
         #rom-tenkey button.tk-fn { font-size: 20px; background: #f1f5f9; color: #374151; }
 
+
+        /* ★V27.7: ROM画面の案内文（過去取得済み・予測・ROM③入れ直し・新タイプ）を重ねて出す置き場
+             ・#rom-note-slot は高さ0 → 案内の有無でレイアウトが変わらない＝テンキーがずれない
+             ・#rom-note-stack は slot の上側（＝カメラ枠の下端）に下揃えで重ねる
+             ・pointer-events:none でカメラ上のボタン（ライト等）のタップは素通りさせる */
+        #rom-note-slot {
+            position: relative;
+            height: 0;
+        }
+        #rom-note-stack {
+            position: absolute;
+            left: 0; right: 0;
+            bottom: 6px;                   /* ROM欄の少し上（カメラ枠の下端に乗る） */
+            z-index: 120;                  /* カメラ上のボタン（100/101）より手前 */
+            pointer-events: none;
+        }
+        #rom-note-stack > div {
+            margin: 4px 0 0 !important;    /* 下揃えなので下の余白は不要 */
+            box-shadow: 0 2px 8px rgba(0,0,0,0.35);
+        }
+        /* 背景の無い赤文字の案内は、カメラ映像の上で読めるよう白地を付ける */
+        #rom-history-note {
+            background: rgba(255,255,255,0.95);
+            border: 2px solid #dc2626;
+            border-radius: 6px;
+            padding: 6px 8px;
+        }
+
+        /* ★V27.7: HTMLテンキーの高さ切替ボタン（押すたび 小→中→大→小 とループ） */
+        #rom-tk-height {
+            height: 34px; min-height: 0;
+            width: auto;
+            padding: 0 10px; margin: 0;
+            font-size: 14px; font-weight: bold;
+            border: 1px solid #cbd5e1; border-radius: 17px;
+            background: #f1f5f9; color: #111827;
+            white-space: nowrap;
+            touch-action: manipulation;
+            -webkit-tap-highlight-color: transparent;
+        }
+
         /* ★V27.0: iPhoneテンキー ⇔ HTMLテンキー のトグルスイッチ（数字モードの時だけ表示） */
         #rom-tk-switch-row {
             display: none;                 /* 表示は applyRomKbMode() が flex に切り替える */
             align-items: center;
             justify-content: center;
-            gap: 12px;
+            gap: 8px;                      /* ★V27.7: 12→8px（高さボタンを並べるため） */
             margin: 6px 0 2px;
             font-size: 16px;
             font-weight: bold;
@@ -915,6 +956,10 @@
             text-align: center;
             z-index: 10010;
             box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            cursor: pointer;                /* ★V27.7: iOSにタップ可能な要素と認識させる */
+            touch-action: manipulation;     /* ★V27.7: ダブルタップ拡大させない */
+            -webkit-user-select: none;      /* ★V27.7: 長押しで文字選択させない */
+            user-select: none;
         }
 
         /* ★ 自動保存ステータス表示 */
@@ -1087,10 +1132,15 @@
 
     <div id="scan-toast">封印を登録しました</div>
     <!-- ★V27.4: 前回設置店トースト（showPrevShopToast） -->
-    <div id="prevshop-toast" onclick="this.style.display='none'"></div>
+    <!-- ★V27.7: タッチで閉じる。onclick だとROM入力中（キーボード表示中）に
+         タップ→入力欄のフォーカスが外れてキーボードが閉じ→画面がずれて click が届かないことがあった。
+         テンキーと同じく ontouchstart＋preventDefault で「触れた瞬間」に閉じ、入力欄のフォーカスも奪わない -->
+    <div id="prevshop-toast"
+         ontouchstart="event.preventDefault(); hidePrevShopToast();"
+         onmousedown="event.preventDefault(); hidePrevShopToast();"></div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V27.6</div>
+        <div class="version-tag">V27.7</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -1108,7 +1158,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V27.6</div>
+            <div class="version-tag">V27.7</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号</div>
@@ -1142,12 +1192,17 @@
 
             <div id="rom-input-area" style="display:none; margin-top:10px;">
                 <!-- ★ V16.3: 判別マップにも過去履歴にも無い＝過去に例の無い主基板QR。新タイプの可能性を警告 -->
+                <!-- ★V27.7: 案内文の置き場（高さ0）。中身はカメラ枠の下端に重ねて表示するので、
+                     案内が出ても消えても ROM欄・ROM確定・HTMLテンキーの位置は1pxも動かない
+                     （以前は案内が出るたびにテンキーが下へずれて誤タップの原因になっていた） -->
+                <div id="rom-note-slot"><div id="rom-note-stack">
                 <div id="rom-unknown-note" style="display:none; color:#dc2626; font-weight:bold; margin-bottom:8px; font-size:15px; line-height:1.4; border:2px solid #dc2626; background:#fff0f0; border-radius:6px; padding:8px;">⚠️ 過去に例の無い主基板QRです（新しいタイプの可能性）。KY/EAIとROMを実物どおり手入力・確認してください</div>
                 <div id="rom-history-note" style="display:none; color:#dc2626; font-weight:bold; margin-bottom:8px; font-size:15px; line-height:1.4;">過去取得済みのＲＯＭ番号を自動入力しております</div>
                 <!-- ★ V16.9: 相似度80%超の類似主基板QRからROMを予測入力したときの案内（完全一致=赤 とは別色のオレンジ） -->
                 <div id="rom-fuzzy-note" style="display:none; color:#ffffff; font-weight:bold; margin-bottom:5px; font-size:13px; line-height:1.35; border:1px solid #4c1d95; background:linear-gradient(135deg,#7c3aed 0%,#a855f7 60%,#c026d3 100%); border-radius:5px; padding:5px 7px; text-shadow:0 1px 1px rgba(0,0,0,.3);"></div>
                 <!-- ★V24.6: ROM①を打ち直してROM③を入れ直したときの案内（中身は setRom3PredictNote() が書く） -->
                 <div id="rom3-predict-note" style="display:none; font-weight:bold; margin-bottom:5px; font-size:13px; line-height:1.35; border-radius:5px; padding:5px 7px;"></div>
+                </div></div><!-- /#rom-note-stack /#rom-note-slot -->
                 <div style="display:flex; gap:5px; align-items:flex-start;">
                     <div style="flex:1; min-width:0;">
                         <input
@@ -1224,6 +1279,8 @@
                     <span class="tks-lbl" id="tks-lbl-ios" onclick="toggleRomTenkeyType()">📱 iPhone</span>
                     <button type="button" id="rom-tk-switch" role="switch" aria-label="テンキー切替" onmousedown="event.preventDefault();" onclick="toggleRomTenkeyType()"><span class="tks-knob"></span></button>
                     <span class="tks-lbl" id="tks-lbl-html" onclick="toggleRomTenkeyType()">🔢 画面テンキー</span>
+                    <!-- ★V27.7: テンキーの高さ切替（押すたび 小→中→大→小）。画面テンキーの時だけ表示 -->
+                    <button type="button" id="rom-tk-height" onmousedown="event.preventDefault();" onclick="cycleRomTenkeyHeight()">↕小</button>
                 </div>
                 <!-- ★V26.3: 数字入力／音声入力の切替ボタンは「前へ戻る」の下へ移動 -->
                 <button class="btn-secondary" onclick="skipRomInput()">ROM入力スキップ</button>
@@ -2245,6 +2302,13 @@
             return { store: p[0], dai: p[1] || "", date: p[2] || "" };
         }
 
+        // ★V27.7: タッチで閉じる（タイマーも止める）
+        function hidePrevShopToast() {
+            const el = document.getElementById('prevshop-toast');
+            if (el) el.style.display = 'none';
+            if (prevShopTimer) { clearTimeout(prevShopTimer); prevShopTimer = null; }
+        }
+
         // 判定して、違う店ならトーストを出す
         function showPrevShopToast(mainBoardQr) {
             const el = document.getElementById('prevshop-toast');
@@ -2264,7 +2328,7 @@
             const dt   = /^\d{6}$/.test(last.date)
                 ? ("（20" + last.date.slice(0, 2) + "-" + last.date.slice(2, 4) + "-" + last.date.slice(4) + "）")
                 : "";
-            el.innerText = "📍 前回設置店：" + name + dai + dt;
+            el.innerText = "📍 前回設置店：" + name + dai + dt + "  ✕";   // ★V27.7: ✕＝タッチで消せる目印
             el.style.display = 'block';
             if (prevShopTimer) clearTimeout(prevShopTimer);
             prevShopTimer = setTimeout(function () { el.style.display = 'none'; }, 4000);
@@ -3828,6 +3892,40 @@
             }
         }
 
+        // ========================================
+        // ★V27.7: HTMLテンキーの高さ切替（3段階ループ）
+        //   ・ボタンを押すたび 小(36px) → 中(46px) → 大(56px) → 小 …
+        //   ・選んだ段階は端末に保存（localStorage romTenkeyHeightV1）→次回もその高さ
+        //   ・高さは CSS変数 --tk-h / --tk-fs で #rom-tenkey のボタンに効かせる
+        // ========================================
+        const ROM_TK_HEIGHT_KEY = "romTenkeyHeightV1";
+        const ROM_TK_HEIGHTS = [
+            { label: "小", h: 36, fs: 28 },   // 今までの高さ（V26.9〜）
+            { label: "中", h: 46, fs: 30 },
+            { label: "大", h: 56, fs: 32 }
+        ];
+        function getRomTenkeyHeightIdx() {
+            let i = 0;
+            try { i = parseInt(localStorage.getItem(ROM_TK_HEIGHT_KEY) || "0", 10); } catch (e) { i = 0; }
+            return (i >= 0 && i < ROM_TK_HEIGHTS.length) ? i : 0;   // 変な値なら「小」
+        }
+        function applyRomTenkeyHeight() {
+            const st = ROM_TK_HEIGHTS[getRomTenkeyHeightIdx()];
+            const tk = document.getElementById('rom-tenkey');
+            if (tk) {
+                tk.style.setProperty('--tk-h',  st.h  + 'px');
+                tk.style.setProperty('--tk-fs', st.fs + 'px');
+            }
+            const b = document.getElementById('rom-tk-height');
+            if (b) b.innerText = "↕" + st.label;
+        }
+        function cycleRomTenkeyHeight() {
+            const next = (getRomTenkeyHeightIdx() + 1) % ROM_TK_HEIGHTS.length;
+            try { localStorage.setItem(ROM_TK_HEIGHT_KEY, String(next)); } catch (e) { /* 保存できなくても今回は効かせる */ }
+            applyRomTenkeyHeight();
+            // 押した後も ROM欄の青枠（いま打っている欄）はそのまま。preventDefault 済みでフォーカスも奪わない
+        }
+
         function applyRomKbMode() {
             const mode = getRomKbMode();
             // ★V26.4: 数字モードは画面のテンキーで打つので iPhone のキーボードは出さない（none）
@@ -3846,6 +3944,10 @@
             const lIos = document.getElementById('tks-lbl-ios'), lHtml = document.getElementById('tks-lbl-html');
             if (lIos) lIos.classList.toggle('tks-on', !useHtmlTk);
             if (lHtml) lHtml.classList.toggle('tks-on', useHtmlTk);
+            // ★V27.7: 高さ切替ボタンは画面テンキーの時だけ。高さも毎回反映
+            const hb = document.getElementById('rom-tk-height');
+            if (hb) hb.style.display = useHtmlTk ? "" : "none";
+            applyRomTenkeyHeight();
 
             ['rom-1', 'rom-3'].forEach(id => {
                 const el = document.getElementById(id);
