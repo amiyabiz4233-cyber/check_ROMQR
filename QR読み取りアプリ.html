@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V27.9</title>
+    <title>点検スキャナー V28.0</title>
 
     <!-- ★V25.0: 予備保存（IndexedDB）。竹内_点検スキャナーの「念のための二重保存」を移植。画面にボタン等は出さない。
          強制終了で主の保存（localStorage）が書き遅れても、起動時に予備の方が台数が多ければそちらを戻し、そのときだけ知らせる -->
@@ -123,6 +123,27 @@
         #seal-count-badge.has { background: rgba(21,128,61,0.85); }   /* 1枚以上は緑 */
         #seal-count-badge.bump { animation: scbBump 0.35s ease-out; } /* 増えた瞬間に一瞬大きく */
         @keyframes scbBump { 0% { transform: scale(1.35); } 100% { transform: scale(1); } }
+        /* ★V28.0: 前回の封印枚数が分かる台は「2/3」表示。文字が長いので小さめに（5文字以上はさらに小さく） */
+        #seal-count-badge .scb-num.frac      { font-size: 24px; letter-spacing: -1px; }
+        #seal-count-badge .scb-num.frac.long { font-size: 18px; }
+        #seal-count-badge.done { background: rgba(37,99,235,0.9); }   /* 前回枚数に届いた＝青（緑の途中と区別） */
+
+        /* ★V28.0: 封印を読んだ瞬間にカメラ枠を緑に2回点滅（竹内_点検スキャナーの s2FlashFrame を移植）
+             pointer-events:none でタップは素通り。z-index は枚数表示(101)より下・映像より上 */
+        #seal-flash {
+            position: absolute; inset: 0;
+            border: 14px solid #00e676; border-radius: 10px;
+            pointer-events: none; opacity: 0; z-index: 99;
+            display: flex; align-items: center; justify-content: center;
+            box-sizing: border-box;
+        }
+        #seal-flash span {
+            background: rgba(0,150,70,.88); color: #fff;
+            font-size: 34px; font-weight: bold;
+            padding: 8px 18px; border-radius: 12px;
+        }
+        #seal-flash.on { animation: sealFlashBlink .32s steps(1,end) 2; }
+        @keyframes sealFlashBlink { 0% { opacity: 1; } 55% { opacity: 0; } 100% { opacity: 0; } }
 
         /* 上＝カメラ枠の上端 / 下＝左右のライトと同じ高さ（ライトとライトの間） */
         #btn-seal-register-top    { top: 10px; }
@@ -1140,7 +1161,7 @@
          onmousedown="event.preventDefault(); hidePrevShopToast();"></div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V27.9</div>
+        <div class="version-tag">V28.0</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -1158,7 +1179,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V27.9</div>
+            <div class="version-tag">V28.0</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号</div>
@@ -4480,6 +4501,7 @@
                 added.forEach(v => currentData.seals.push(v));
                 updateSealDisplay();
                 updateUI();
+                flashSealFrame();   // ★V28.0: カメラ枠を光らせて「読んだ」を分かりやすく
                 // ★V27.9: 同じコマで2件以上＝「同時」。青・大きめ・2.5秒で出して、1枚ずつ連続読みと見分ける
                 if (added.length === 1) showScanToast("封印を登録しました");
                 else showScanToast("📸 同時" + added.length + "件 まとめて登録", { multi: true });
@@ -4749,12 +4771,37 @@
             const n = ((currentData && currentData.seals) ? currentData.seals : []).filter(v => v && v !== "なし").length;
             badge.style.display = (currentStep === 4) ? 'block' : 'none';
             const num = badge.querySelector('.scb-num');
-            if (num) num.textContent = String(n);
+            // ★V28.0: 前回の封印枚数が分かる台（expectedSeals あり）は「n/前回枚数」。分からない台は今まで通り n だけ
+            const exp = expectedSealCount();
+            const txt = exp > 0 ? (n + "/" + exp) : String(n);
+            if (num) {
+                num.textContent = txt;
+                num.classList.toggle('frac', exp > 0);
+                num.classList.toggle('long', txt.length >= 5);   // 例 10/12
+            }
             badge.classList.toggle('has', n > 0);
+            badge.classList.toggle('done', exp > 0 && n >= exp);   // 前回枚数に届いたら青
             if (currentStep === 4 && n > lastSealBadgeCount && lastSealBadgeCount >= 0) {
                 badge.classList.remove('bump'); void badge.offsetWidth; badge.classList.add('bump');   // アニメーションをやり直す
             }
             lastSealBadgeCount = (currentStep === 4) ? n : -1;   // 画面を離れたら数え直し（次の台の0枚目で弾まない）
+        }
+
+        // ★V28.0: 前回の封印枚数（"なし" は数えない）。前回の記録が無い台は 0
+        function expectedSealCount() {
+            return (expectedSeals && expectedSeals.length) ? expectedSeals.filter(v => v && v !== "なし").length : 0;
+        }
+
+        // ★V28.0: 封印を読んだらカメラ枠を緑に点滅＋「✔ 封印 2/3」（前回が無い台は「✔ 封印 2枚目」）
+        function flashSealFrame() {
+            const w = document.getElementById('reader-wrapper');
+            if (!w) return;
+            let f = document.getElementById('seal-flash');
+            if (!f) { f = document.createElement('div'); f.id = 'seal-flash'; f.innerHTML = '<span></span>'; w.appendChild(f); }
+            const n = ((currentData && currentData.seals) ? currentData.seals : []).filter(v => v && v !== "なし").length;
+            const exp = expectedSealCount();
+            f.firstChild.innerText = exp > 0 ? ("✔ 封印 " + n + "/" + exp) : ("✔ 封印 " + n + "枚目");
+            f.classList.remove('on'); void f.offsetWidth; f.classList.add('on');   // アニメーションをやり直す
         }
 
         function updateSealRegisterButton() {
