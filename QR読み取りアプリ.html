@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V27.8</title>
+    <title>点検スキャナー V27.9</title>
 
     <!-- ★V25.0: 予備保存（IndexedDB）。竹内_点検スキャナーの「念のための二重保存」を移植。画面にボタン等は出さない。
          強制終了で主の保存（localStorage）が書き遅れても、起動時に予備の方が台数が多ければそちらを戻し、そのときだけ知らせる -->
@@ -1140,7 +1140,7 @@
          onmousedown="event.preventDefault(); hidePrevShopToast();"></div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V27.8</div>
+        <div class="version-tag">V27.9</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -1158,7 +1158,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V27.8</div>
+            <div class="version-tag">V27.9</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号</div>
@@ -2364,12 +2364,36 @@
             prevShopTimer = setTimeout(function () { el.style.display = 'none'; }, 4000);
         }
 
-        function showScanToast(message) {
+        // ★V27.9: 同時に読めた封印を見分けるためのトースト状態
+        //   multiToastUntil = 青い「同時」トーストを出している期限(ms)。この間に1枚ずつの登録が来ても
+        //   青い表示を消さずに「＋1件」を書き足す（同時だったことが見えなくならないように）
+        let multiToastUntil = 0;
+        let multiToastBase = "";   // 青トーストの本文（＋n件を足す前の文）
+        let multiToastPlus = 0;    // 青トースト表示中に1枚ずつ追加された件数
+
+        function showScanToast(message, opt) {
             const toast = document.getElementById('scan-toast');
             if (!toast) return;
+            const isMulti = !!(opt && opt.multi);
+            const now = Date.now();
+
+            // 青トースト表示中に、普通の「封印を登録しました」が来た → 青のまま「＋n件」を足す
+            if (!isMulti && now < multiToastUntil && message === "封印を登録しました") {
+                multiToastPlus++;
+                toast.innerText = multiToastBase + "  ＋" + multiToastPlus + "件";
+                return;   // タイマーは延ばさない（青の期限どおりに消える）
+            }
 
             toast.innerText = message;
+            // 見た目：同時＝青・大きめ／通常＝今まで通り（CSSの緑に戻す）
+            toast.style.background = isMulti ? '#2563eb' : '';
+            toast.style.fontSize   = isMulti ? '20px' : '';
+            toast.style.padding    = isMulti ? '16px 24px' : '';
             toast.style.display = 'block';
+
+            const ms = isMulti ? 2500 : 1000;   // 同時は2.5秒、通常は今まで通り1秒
+            if (isMulti) { multiToastUntil = now + ms; multiToastBase = message; multiToastPlus = 0; }
+            else         { multiToastUntil = 0; }
 
             if (toastTimer) {
                 clearTimeout(toastTimer);
@@ -2377,7 +2401,8 @@
 
             toastTimer = setTimeout(() => {
                 toast.style.display = 'none';
-            }, 1000);
+                multiToastUntil = 0;
+            }, ms);
         }
 
         function initAudio() {
@@ -4455,7 +4480,9 @@
                 added.forEach(v => currentData.seals.push(v));
                 updateSealDisplay();
                 updateUI();
-                showScanToast(added.length === 1 ? "封印を登録しました" : ("封印を" + added.length + "件まとめて登録しました"));
+                // ★V27.9: 同じコマで2件以上＝「同時」。青・大きめ・2.5秒で出して、1枚ずつ連続読みと見分ける
+                if (added.length === 1) showScanToast("封印を登録しました");
+                else showScanToast("📸 同時" + added.length + "件 まとめて登録", { multi: true });
                 saveState(); // ★ 封印追加ごとに保存
                 html5QrCode.resume();
                 return;
