@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V27.7</title>
+    <title>点検スキャナー V27.8</title>
 
     <!-- ★V25.0: 予備保存（IndexedDB）。竹内_点検スキャナーの「念のための二重保存」を移植。画面にボタン等は出さない。
          強制終了で主の保存（localStorage）が書き遅れても、起動時に予備の方が台数が多ければそちらを戻し、そのときだけ知らせる -->
@@ -1140,7 +1140,7 @@
          onmousedown="event.preventDefault(); hidePrevShopToast();"></div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V27.7</div>
+        <div class="version-tag">V27.8</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -1158,7 +1158,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V27.7</div>
+            <div class="version-tag">V27.8</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号</div>
@@ -1375,9 +1375,39 @@
             await s2Prewarm();
             if (s2WasmPromise && !s2WasmReady && !s2WasmFailed) { await Promise.race([s2WasmPromise, s2Sleep(4000)]); }
             const api = window.BarcodeDetectionAPI;
-            if (s2WasmReady && api && api.BarcodeDetector) window.BarcodeDetector = api.BarcodeDetector;
+            if (s2WasmReady && api && api.BarcodeDetector) window.BarcodeDetector = s2MultiBD(api.BarcodeDetector);   // ★V27.8: 全結果を覚えるラッパー経由
             else s2RestoreNative();   // 読み込めない（電波・CDN）時は従来どおり ZXing-js
             s2ShowEngine();
+        }
+        // ★V27.8: 封印のまとめ登録用。
+        //   html5-qrcode は BarcodeDetector.detect() が複数のQRを返しても「一番大きい1つ」しか使わない。
+        //   そこで detect() を包んで、同じコマで読めた全部の文字列を s2LastFrame に覚えておく。
+        //   ④封印の画面では handleScannedText がこれを見て、残りの封印も一緒に登録する。
+        //   ・読み取り範囲（カメラ枠）は html5-qrcode のまま＝隣の台まで拾う範囲は今と同じ
+        //   ・従来エンジン（ZXing-js）はこの仕組みを通らないので、今まで通り1枚ずつ
+        let s2LastFrame = { t: 0, vals: [] };   // t=読めた時刻(ms) / vals=そのコマで読めた全QRの文字列
+        let s2MultiCls = null;                  // 包んだクラスは1回だけ作って使い回す
+        function s2MultiBD(Base) {
+            if (s2MultiCls && s2MultiCls.__base === Base) return s2MultiCls;
+            class S2MultiBarcodeDetector extends Base {
+                async detect(src) {
+                    const r = await super.detect(src);
+                    try {
+                        if (r && r.length) s2LastFrame = { t: Date.now(), vals: r.map(x => x && x.rawValue).filter(v => typeof v === "string" && v) };
+                    } catch (e) {}
+                    return r;   // html5-qrcode へは今まで通りそのまま返す
+                }
+            }
+            S2MultiBarcodeDetector.__base = Base;
+            s2MultiCls = S2MultiBarcodeDetector;
+            return s2MultiCls;
+        }
+        // 直前のコマで value と一緒に読めた他のQR（1.5秒以内・同じコマに value が含まれるときだけ）
+        function s2SameFrameOthers(value) {
+            const f = s2LastFrame;
+            if (!f || !f.vals || (Date.now() - f.t) > 1500) return [];
+            if (!f.vals.includes(value)) return [];   // 別のコマの結果は混ぜない
+            return f.vals.filter(v => v !== value);
         }
         // html5-qrcode は BarcodeDetector があると「BarcodeDetector と ZXing-js を1コマずつ交互」に使う。
         // 新エンジンが準備できていれば交互をやめて新だけにする（従来との違いがはっきりし、1コマの処理も軽い）
@@ -4402,21 +4432,30 @@
             }
 
             if (currentStep === 4) {
-                if (!isValidSealQr(value)) {
-                    html5QrCode.resume();
-                    return;
-                }
+                // ★V27.8: 封印のまとめ登録
+                //   基本は今まで通り1枚ずつ。カメラ枠に複数枚写っていて読めた場合だけ、まとめて登録する。
+                //   html5-qrcode が渡してくる value（一番大きいQR）に、同じコマで読めた他のQRを足して判定。
+                //   ・封印の形式でないもの（台番・主基板など）は除外
+                //   ・登録済み／同じコマで重複したものは除外
+                //   ・value 自体が登録済みでも、他に新しい封印があれば登録する（残りだけ追加される）
+                const cands = [value].concat(s2SameFrameOthers(value));
+                const added = [];
+                cands.forEach(v => {
+                    if (!isValidSealQr(v)) return;
+                    if (currentData.seals.includes(v) || added.includes(v)) return;
+                    added.push(v);
+                });
 
-                if (currentData.seals.includes(value)) {
+                if (added.length === 0) {   // 新しい封印なし＝今まで通り無視
                     html5QrCode.resume();
                     return;
                 }
 
                 playScanBeep();
-                currentData.seals.push(value);
+                added.forEach(v => currentData.seals.push(v));
                 updateSealDisplay();
                 updateUI();
-                showScanToast("封印を登録しました");
+                showScanToast(added.length === 1 ? "封印を登録しました" : ("封印を" + added.length + "件まとめて登録しました"));
                 saveState(); // ★ 封印追加ごとに保存
                 html5QrCode.resume();
                 return;
