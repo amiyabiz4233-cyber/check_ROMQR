@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V28.1_202611051100</title>
+    <title>点検スキャナー V28.2</title>
 
     <!-- ★V25.0: 予備保存（IndexedDB）。竹内_点検スキャナーの「念のための二重保存」を移植。画面にボタン等は出さない。
          強制終了で主の保存（localStorage）が書き遅れても、起動時に予備の方が台数が多ければそちらを戻し、そのときだけ知らせる -->
@@ -291,6 +291,20 @@
             border: 2px solid #dc2626;
             border-radius: 6px;
             padding: 6px 8px;
+        }
+
+        /* ★V28.2: 前回設置店の案内（ROM画面の案内欄の一番上に出す）
+             ・以前は画面上部に固定表示のトーストだったため、自動入力されたROM欄に重なって見えなかった
+             ・#rom-note-stack の中＝カメラ枠の下端に重ねるので、ページ全体は下がらず ROM欄にもかぶらない */
+        #prevshop-note {
+            background: #ea580c;
+            color: #fff;
+            font-weight: bold;
+            font-size: 14px;
+            line-height: 1.3;
+            border-radius: 6px;
+            padding: 4px 8px;
+            text-align: center;
         }
 
         /* ★V27.7: HTMLテンキーの高さ切替ボタン（押すたび 小→中→大→小 とループ） */
@@ -1161,7 +1175,7 @@
          onmousedown="event.preventDefault(); hidePrevShopToast();"></div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V28.1_202611051100</div>
+        <div class="version-tag">V28.2</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -1179,7 +1193,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V28.1_202611051100</div>
+            <div class="version-tag">V28.2</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号</div>
@@ -1223,6 +1237,9 @@
                 <div id="rom-fuzzy-note" style="display:none; color:#ffffff; font-weight:bold; margin-bottom:5px; font-size:13px; line-height:1.35; border:1px solid #4c1d95; background:linear-gradient(135deg,#7c3aed 0%,#a855f7 60%,#c026d3 100%); border-radius:5px; padding:5px 7px; text-shadow:0 1px 1px rgba(0,0,0,.3);"></div>
                 <!-- ★V24.6: ROM①を打ち直してROM③を入れ直したときの案内（中身は setRom3PredictNote() が書く） -->
                 <div id="rom3-predict-note" style="display:none; font-weight:bold; margin-bottom:5px; font-size:13px; line-height:1.35; border-radius:5px; padding:5px 7px;"></div>
+                <!-- ★V28.2: 前回設置店（中身は setPrevShopNote() が書く）。ROM確定まで出しっぱなし。
+                     案内欄の一番下（＝ROM欄のすぐ上）に置く。キーボード表示でiOSがスクロールしても見切れにくい位置 -->
+                <div id="prevshop-note" style="display:none;"></div>
                 </div></div><!-- /#rom-note-stack /#rom-note-slot -->
                 <div style="display:flex; gap:5px; align-items:flex-start;">
                     <div style="flex:1; min-width:0;">
@@ -1400,6 +1417,181 @@
             else s2RestoreNative();   // 読み込めない（電波・CDN）時は従来どおり ZXing-js
             s2ShowEngine();
         }
+        // ================================================================
+        // ★V28.2: 角の目印（ファインダーパターン）が欠けた主基板QRの救済読み取り
+        //   背景（2026-11-06 宮崎さん）:
+        //     シールの折れ・傷で QR の「角の四角（目印）」が1つ潰れていると、ZXing（wasm も従来も）は
+        //     QRの位置そのものを見つけられず読めない。iPhone純正カメラ（AppleのVision）は読める。
+        //     実物 M2DT230021529（DT-K No.M021529）で再現・確認。
+        //   やり方:
+        //     ① 画像を白黒にして、残っている目印（黒白黒白黒＝1:1:3:1:1 の並び）を探す
+        //     ② 目印が2つ見つかれば、QRは正方形なので「欠けた3つ目の位置」は最大6通りに絞れる
+        //     ③ その位置に きれいな目印を描き足して もう一度読ませる（中身の欠けは QR の誤り訂正が直す）
+        //     ④ 主基板QRの正しい形式（A:13桁／B:10桁）のときだけ採用＝描き足しによる誤読は捨てる
+        //   ・②主基板の画面だけ、普通に読めなかったコマで、0.35秒に1回だけ動かす（電池・発熱対策）
+        //   ・新エンジン（zxing-wasm）のときだけ。従来エンジンでは動かない
+        // ================================================================
+        const S3_MB_RE = /^[A-Z]\d[A-Z]{2}\d{9}$|^\d[A-Z]\d{2}\/\d{5}$/;   // 主基板QRの正常形式（A／B）
+        let s3LastTry = 0;            // 前回 救済を試した時刻(ms)
+        let s3Stat = { tries: 0, hits: 0 };   // 動作確認用（コンソールで s3Stat を見る）
+
+        // 白黒化（局所平均より少し暗ければ黒）。積分画像で平均を出すので速い
+        function s3Binarize(gray, w, h) {
+            const integ = new Float64Array((w + 1) * (h + 1));
+            for (let y = 0; y < h; y++) {
+                let rs = 0;
+                for (let x = 0; x < w; x++) {
+                    rs += gray[y * w + x];
+                    integ[(y + 1) * (w + 1) + x + 1] = integ[y * (w + 1) + x + 1] + rs;
+                }
+            }
+            const r = Math.max(8, Math.round(Math.min(w, h) / 16));   // 平均を取る範囲（半径）
+            const bin = new Uint8Array(w * h);                        // 1=黒
+            for (let y = 0; y < h; y++) {
+                const y0 = Math.max(0, y - r), y1 = Math.min(h, y + r + 1);
+                for (let x = 0; x < w; x++) {
+                    const x0 = Math.max(0, x - r), x1 = Math.min(w, x + r + 1);
+                    const s = integ[y1 * (w + 1) + x1] - integ[y0 * (w + 1) + x1] - integ[y1 * (w + 1) + x0] + integ[y0 * (w + 1) + x0];
+                    const mean = s / ((x1 - x0) * (y1 - y0));
+                    bin[y * w + x] = gray[y * w + x] < mean * 0.92 ? 1 : 0;
+                }
+            }
+            return bin;
+        }
+
+        // 5つの連続した長さが 1:1:3:1:1 か（許容 ±50%）
+        function s3IsFinderRatio(c) {
+            const tot = c[0] + c[1] + c[2] + c[3] + c[4];
+            if (tot < 7) return 0;
+            const m = tot / 7, v = m * 0.5;
+            if (Math.abs(c[0] - m) < v && Math.abs(c[1] - m) < v && Math.abs(c[2] - 3 * m) < 3 * v &&
+                Math.abs(c[3] - m) < v && Math.abs(c[4] - m) < v) return m;
+            return 0;
+        }
+
+        // 縦方向にも 1:1:3:1:1 になっているか（cx 列を cy から上下に見る）。合えば {cy, m}
+        function s3CheckVertical(bin, w, h, cx, cy, maxRun) {
+            if (!bin[cy * w + cx]) return null;
+            const c = [0, 0, 0, 0, 0];
+            let y = cy;
+            while (y >= 0 && bin[y * w + cx]) { c[2]++; y--; }
+            while (y >= 0 && !bin[y * w + cx] && c[1] <= maxRun) { c[1]++; y--; }
+            while (y >= 0 && bin[y * w + cx] && c[0] <= maxRun) { c[0]++; y--; }
+            y = cy + 1;
+            while (y < h && bin[y * w + cx]) { c[2]++; y++; }
+            while (y < h && !bin[y * w + cx] && c[3] <= maxRun) { c[3]++; y++; }
+            while (y < h && bin[y * w + cx] && c[4] <= maxRun) { c[4]++; y++; }
+            const m = s3IsFinderRatio(c);
+            if (!m) return null;
+            return { cy: (y - c[4] - c[3]) - c[2] / 2, m: m };
+        }
+
+        // 目印の中心を探す。戻り値 [{x, y, m(1マスの大きさ), n(見つかった回数)}] 多い順
+        //   1行ずつ「同じ色が続く長さ」の列に直し、黒から始まる連続5区間が 1:1:3:1:1 の所を候補にする
+        function s3FindFinders(bin, w, h) {
+            const found = [];
+            const runLen = new Int32Array(w + 1), runStart = new Int32Array(w + 1), runCol = new Uint8Array(w + 1);
+            for (let y = 1; y < h; y += 2) {
+                // この行を区間に分ける
+                let n = 0, x = 0;
+                while (x < w) {
+                    const col = bin[y * w + x], s0 = x;
+                    while (x < w && bin[y * w + x] === col) x++;
+                    runCol[n] = col; runStart[n] = s0; runLen[n] = x - s0; n++;
+                }
+                for (let k = 0; k + 4 < n; k++) {
+                    if (runCol[k] !== 1) continue;                      // 黒から始まる5区間だけ
+                    const c = [runLen[k], runLen[k + 1], runLen[k + 2], runLen[k + 3], runLen[k + 4]];
+                    const m = s3IsFinderRatio(c);
+                    if (!m) continue;
+                    const cx = Math.round(runStart[k + 2] + runLen[k + 2] / 2);   // 真ん中の黒の中心
+                    const v = s3CheckVertical(bin, w, h, cx, y, runLen[k + 2] * 2);
+                    if (!v || Math.abs(v.m - m) > m * 0.6) continue;    // 縦も同じ大きさの目印であること
+                    const fx = cx, fy = v.cy, fm = (m + v.m) / 2;
+                    const hit = found.find(f => Math.hypot(f.x - fx, f.y - fy) < fm * 2);
+                    if (hit) {                                          // 同じ目印 → 平均して回数を数える
+                        hit.x = (hit.x * hit.n + fx) / (hit.n + 1); hit.y = (hit.y * hit.n + fy) / (hit.n + 1);
+                        hit.m = (hit.m * hit.n + fm) / (hit.n + 1); hit.n++;
+                    } else found.push({ x: fx, y: fy, m: fm, n: 1 });
+                }
+            }
+            return found.filter(f => f.n >= 2).sort((a, b) => b.n - a.n).slice(0, 6);
+        }
+
+        // ctx に「中心(cx,cy)・1マス m・向き(ux,uy)」のきれいな目印を描く（白い余白つき）
+        function s3PaintFinder(ctx, cx, cy, m, ux, uy) {
+            ctx.save();
+            ctx.translate(cx, cy);
+            ctx.transform(ux, uy, -uy, ux, 0, 0);   // 単位ベクトル (ux,uy) を横軸に回転
+            ctx.fillStyle = '#fff'; ctx.fillRect(-4.5 * m, -4.5 * m, 9 * m, 9 * m);   // 余白（区切り）
+            ctx.fillStyle = '#000'; ctx.fillRect(-3.5 * m, -3.5 * m, 7 * m, 7 * m);
+            ctx.fillStyle = '#fff'; ctx.fillRect(-2.5 * m, -2.5 * m, 5 * m, 5 * m);
+            ctx.fillStyle = '#000'; ctx.fillRect(-1.5 * m, -1.5 * m, 3 * m, 3 * m);
+            ctx.restore();
+        }
+
+        // 本体：src（html5-qrcode が渡すキャンバス等）から救済読み取り。読めたら文字列、だめなら null
+        //   decodeFn(canvas) は「元のエンジンで読む」関数（Promise<結果配列>）
+        async function s3RepairDecode(src, decodeFn) {
+            const sw = src.width || src.videoWidth, sh = src.height || src.videoHeight;
+            if (!sw || !sh) return null;
+            const sc = 640 / Math.max(sw, sh);                     // 長辺640pxにそろえる（大きい画像は縮めて速く、小さい画像は拡大して読みやすく）
+            const w = Math.round(sw * sc), h = Math.round(sh * sc);
+            const base = document.createElement('canvas');
+            base.width = w; base.height = h;
+            const bctx = base.getContext('2d', { willReadFrequently: true });
+            bctx.drawImage(src, 0, 0, w, h);
+            const px = bctx.getImageData(0, 0, w, h).data;
+            const gray = new Uint8Array(w * h);
+            for (let i = 0, j = 0; i < gray.length; i++, j += 4) gray[i] = (px[j] * 77 + px[j + 1] * 150 + px[j + 2] * 29) >> 8;
+            const bin = s3Binarize(gray, w, h);
+            const fs = s3FindFinders(bin, w, h);
+            if (fs.length < 2) return null;
+
+            const work = document.createElement('canvas');
+            work.width = w; work.height = h;
+            const wctx = work.getContext('2d');
+            let attempts = 0;
+            for (let i = 0; i < fs.length; i++) for (let j = i + 1; j < fs.length; j++) {
+                const A = fs[i], B = fs[j];
+                if (Math.max(A.m, B.m) / Math.min(A.m, B.m) > 1.6) continue;     // 大きさが違う＝別のQR
+                const m = (A.m + B.m) / 2;
+                const vx = B.x - A.x, vy = B.y - A.y, d = Math.hypot(vx, vy);
+                const dm = d / m;                                                 // 目印どうしの距離（マス数）
+                if (dm < 12 || dm > 60) continue;                                 // バージョン1〜7程度だけ
+                const px_ = -vy, py_ = vx;                                        // A→B に直角なベクトル（同じ長さ）
+                const cands = [];
+                // A-B が「辺」のとき：3つ目は A か B から直角方向
+                //   1マスの大きさは「目印の中心どうしの距離＝14＋4k マス（k=バージョン-1）」から測り直す
+                //   （斜めのQRだと目印の幅から測った値が大きめに出て、描き足す目印がずれるため）
+                const mSide = d / (14 + 4 * Math.max(0, Math.round((dm - 14) / 4)));
+                const dmDiag = dm / Math.SQRT2;
+                const mDiag = (d / Math.SQRT2) / (14 + 4 * Math.max(0, Math.round((dmDiag - 14) / 4)));
+                [[A, 1], [A, -1], [B, 1], [B, -1]].forEach(([P, s]) => cands.push({ x: P.x + s * px_, y: P.y + s * py_, ux: vx / d, uy: vy / d, m: mSide }));
+                // A-B が「対角線」のとき：3つ目は中点から直角方向に半分
+                const mx = (A.x + B.x) / 2, my = (A.y + B.y) / 2;
+                const ax = (vx + px_) / 2, ay = (vy + py_) / 2, al = Math.hypot(ax, ay);   // QRの辺の向き
+                [1, -1].forEach(s => cands.push({ x: mx + s * px_ / 2, y: my + s * py_ / 2, ux: ax / al, uy: ay / al, m: mDiag }));
+                for (const c of cands) {
+                    if (Math.abs(c.m - m) > m * 0.4) continue;                   // 目印の大きさと合わない並び
+                    if (c.x < -2 * m || c.y < -2 * m || c.x > w + 2 * m || c.y > h + 2 * m) continue;   // 画面外
+                    if (++attempts > 24) return null;                            // 1コマで試すのは最大24回
+                    wctx.drawImage(base, 0, 0);
+                    s3PaintFinder(wctx, c.x, c.y, c.m, c.ux, c.uy);
+                    let r = null;
+                    try { r = await decodeFn(work); } catch (e) { r = null; }
+                    if (r && r.length) {
+                        const hit = r.map(x => x && x.rawValue).find(v => typeof v === 'string' && S3_MB_RE.test(v));
+                        if (hit) return hit;
+                    }
+                }
+            }
+            return null;
+        }
+
+        let s3Busy = false;           // 救済読み取り中（重ねて走らせない）
+        let s3RepairedValue = "", s3RepairedAt = 0;   // 救済で読めた値と時刻（確認画面で案内を出す用）
+
         // ★V27.8: 封印のまとめ登録用。
         //   html5-qrcode は BarcodeDetector.detect() が複数のQRを返しても「一番大きい1つ」しか使わない。
         //   そこで detect() を包んで、同じコマで読めた全部の文字列を s2LastFrame に覚えておく。
@@ -1416,6 +1608,23 @@
                     try {
                         if (r && r.length) s2LastFrame = { t: Date.now(), vals: r.map(x => x && x.rawValue).filter(v => typeof v === "string" && v) };
                     } catch (e) {}
+                    // ★V28.2: ②主基板の画面で読めなかったコマ → 0.35秒に1回だけ「欠けた目印の描き足し」で救済を試す
+                    //   確認画面・修正画面が出ている間は試さない（スキャン無視中のため）
+                    if ((!r || !r.length) && currentStep === 2 && !s3Busy && Date.now() - s3LastTry > 350 &&
+                        document.getElementById('confirm-overlay').style.display !== 'flex') {
+                        s3Busy = true; s3LastTry = Date.now(); s3Stat.tries++;
+                        try {
+                            const v = await s3RepairDecode(src, cv => super.detect(cv));
+                            if (v) {
+                                s3Stat.hits++;
+                                s3RepairedValue = v; s3RepairedAt = Date.now();
+                                // html5-qrcode は rawValue と boundingBox（一番大きいのを選ぶのに使う）だけ見る
+                                const bb = { x: 0, y: 0, width: 100, height: 100, top: 0, left: 0, right: 100, bottom: 100 };
+                                return [{ rawValue: v, format: "qr_code", boundingBox: bb, cornerPoints: [] }];
+                            }
+                        } catch (e) { console.warn("救済読み取りエラー", e); }
+                        finally { s3Busy = false; }
+                    }
                     return r;   // html5-qrcode へは今まで通りそのまま返す
                 }
             }
@@ -2360,7 +2569,31 @@
             if (prevShopTimer) { clearTimeout(prevShopTimer); prevShopTimer = null; }
         }
 
+        // ★V28.2: 前回設置店を ROM画面の案内欄（#prevshop-note）に出す／消す
+        //   mainBoardQr が null・"なし"・新規・同じ店 → 消す
+        //   ROM画面（③）にいる間ずっと表示。次の台へ進むか、主基板なしにしたら消える
+        function setPrevShopNote(mainBoardQr) {
+            const el = document.getElementById('prevshop-note');
+            if (!el) return;
+            el.style.display = 'none';                       // 前の台の表示は必ず消す
+            el.innerText = '';
+            if (!mainBoardQr || mainBoardQr === 'なし') return;
+            const last = lookupLastShop(mainBoardQr);
+            if (!last || !shopId) return;                    // 新規の主基板／店未選択 → 出さない
+            const gNow  = storeGroupOf(shopId) || String(Number(shopId));
+            const gLast = storeGroupOf(last.store) || String(Number(last.store));
+            if (gNow === gLast) return;                      // 前回も同じ店 → 出さない
+            const name = storeNameOf(gLast);
+            const dai  = last.dai ? (" " + last.dai + "番台") : "";
+            const dt   = /^\d{6}$/.test(last.date)
+                ? ("（20" + last.date.slice(0, 2) + "-" + last.date.slice(2, 4) + "-" + last.date.slice(4) + "）")
+                : "";
+            el.innerText = "📍 前回設置店：" + name + dai + dt;
+            el.style.display = 'block';
+        }
+
         // 判定して、違う店ならトーストを出す
+        // ★V28.2: 今は呼んでいない（ROM欄にかぶるため setPrevShopNote に置き換え）。関数は残す
         function showPrevShopToast(mainBoardQr) {
             const el = document.getElementById('prevshop-toast');
             if (!el) return;
@@ -4473,7 +4706,11 @@
                 // ★ V17.4: 6桁誤読 or 形式不一致なら赤警告付きで確認表示
                 const w = mainboardConfirmWarning(value);
                 showConfirmation(value, w.warn, w.msg);
-                showPrevShopToast(value);   // ★V27.4: 前回設置店が今の店と違えばトースト
+                // ★V28.2: トーストはやめ、確認OK後に ROM画面の案内欄へ出す（approveValue の②）
+                // ★V28.2: 傷で目印が欠けたQRを補正して読んだときは、確認を促すトースト
+                if (value === s3RepairedValue && Date.now() - s3RepairedAt < 3000) {
+                    showScanToast("🩹 傷のあるQRを補正して読みました。シールの番号と照合してください", { multi: true });   // multi＝青・2.5秒（普段の1秒では読み切れない）
+                }
                 return;
             }
 
@@ -4573,6 +4810,7 @@
                 // ★ V16.9: 類似QRから予測できた場合はオレンジのバナーで案内するため赤文字は出さない
                 setUnknownMainboardNote(!typeMatched && !histHit && !fuzzyHit);
                 resetRom3Predict();   // ★V24.5: この時点のROM①を基準に「人が変えたか」を判定
+                setPrevShopNote(pendingValue);   // ★V28.2: 前回設置店を案内欄に（違う店のときだけ）
                 currentStep = 3;
                 updateUI();
                 focusRomInput();
@@ -5371,6 +5609,7 @@
                 setRomHistoryHighlight(false);
                 setUnknownMainboardNote(false); // ★ V16.3: 未知主基板の警告もクリア
                 clearFuzzyRomState();           // ★ V16.9: 予測入力の表示・状態もクリア
+                setPrevShopNote(null);          // ★V28.2: 前回設置店の案内も消す
                 expectedSeals = null;           // ★ V18.8: 主基板なし＝照合対象なし
                 currentStep = 3;
                 updateUI();
@@ -5411,6 +5650,7 @@
             expectedSeals = null;           // ★ V18.8: 次の台へ移るので照合対象をリセット
             setUnknownMainboardNote(false); // ★ V16.3: 次の台へ移る際に未知主基板の警告をクリア
             clearFuzzyRomState();           // ★ V16.9: 予測入力の表示・状態もクリア
+            setPrevShopNote(null);          // ★V28.2: 前回設置店の案内もクリア
 
             document.getElementById('seal-list-display').innerHTML = "";
             document.getElementById('manual-input').value = "";
