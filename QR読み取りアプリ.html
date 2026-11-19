@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V28.4_202611191100</title>
+    <title>点検スキャナー V28.5</title>
 
     <!-- ★V25.0: 予備保存（IndexedDB）。竹内_点検スキャナーの「念のための二重保存」を移植。画面にボタン等は出さない。
          強制終了で主の保存（localStorage）が書き遅れても、起動時に予備の方が台数が多ければそちらを戻し、そのときだけ知らせる -->
@@ -1178,7 +1178,7 @@
          onmousedown="event.preventDefault(); hidePrevShopToast();"></div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V28.4_202611191100</div>
+        <div class="version-tag">V28.5</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -1198,7 +1198,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V28.4_202611191100</div>
+            <div class="version-tag">V28.5</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号</div>
@@ -5678,6 +5678,7 @@
                 time: new Date().toLocaleTimeString(),
                 ts: Date.now()   // ★V24.1: 台/10分の計算用（ミリ秒）。CSVには出さない
             });
+            remindQuickSaveIfNeeded();   // ★V28.5: ファイル未保存が20台たまるごとに、すぐ消えるお知らせを出す
 
             renderHistoryTable(); // ★V14.9: 一元化
 
@@ -5835,6 +5836,40 @@
         //   ・ファイル名に「途中」「時刻」「台数」を入れて、送信用CSVや他の控えと見分けられるようにする
         //   ・中身は送信用CSVと同じ形式（社員,店舗,時間,台番,主,ROM,封印 / Shift_JIS）→「CSV ファイルから継続」で読める
         // ========================================
+        // ========================================
+        // ★V28.5: 途中保存のリマインダー（2026-11-19 宮崎さん指示）
+        //   「📄 途中保存（ファイルへ）」は押し忘れたら意味が無いので、
+        //   ファイルに入れていない台が 20台 たまるごと（20・40・60…）に、すぐ消えるお知らせを出す。
+        //   ・3秒で勝手に消える。押す必要なし。タッチも邪魔しない（pointer-events:none）
+        //   ・スキャンの緑トースト（画面上端）と重ならないよう、その少し下にオレンジで出す
+        //   ・途中保存を押すと数え直し（そこからまた20台）
+        //   ・数は画面を開いている間だけ覚える（開き直したら、今ある台数を未保存として数える＝安全側）
+        // ========================================
+        const QUICK_SAVE_REMIND_EVERY = 20;   // 何台ごとに知らせるか
+        let quickFileSavedCount = 0;          // 最後にファイルへ入れた時点の台数
+        let quickRemindTimer = null;
+        function remindQuickSaveIfNeeded() {
+            try {
+                const total = allData ? allData.length : 0;
+                if (total < quickFileSavedCount) quickFileSavedCount = 0;   // 新しい点検を始めた・台を消した → 数え直し
+                const unsaved = total - quickFileSavedCount;
+                if (unsaved <= 0 || unsaved % QUICK_SAVE_REMIND_EVERY !== 0) return;   // 20台ちょうどの時だけ
+                let el = document.getElementById("quick-save-remind");
+                if (!el) {   // 初回だけ入れ物を作る
+                    el = document.createElement("div");
+                    el.id = "quick-save-remind";
+                    el.style.cssText = "display:none;position:fixed;top:84px;left:50%;transform:translateX(-50%);" +
+                        "background:#f59e0b;color:#fff;padding:12px 18px;border-radius:10px;font-weight:bold;font-size:16px;" +
+                        "text-align:center;width:max-content;max-width:90vw;z-index:10009;box-shadow:0 4px 12px rgba(0,0,0,0.25);" +
+                        "pointer-events:none;";   // タッチは下の画面へ素通し（スキャンの邪魔をしない）
+                    document.body.appendChild(el);
+                }
+                el.innerText = "📄 ファイル未保存が " + unsaved + "台。\n「途中保存」を押すと安心です";
+                el.style.display = "block";
+                if (quickRemindTimer) clearTimeout(quickRemindTimer);
+                quickRemindTimer = setTimeout(function () { el.style.display = "none"; }, 3000);   // 3秒で消える
+            } catch (e) { console.error("途中保存リマインダー失敗:", e); }   // 失敗しても点検は止めない
+        }
         function quickSaveFile() {
             if (!allData || allData.length === 0) { alert("まだ確定した台がありません"); return; }
             let blob;
@@ -5845,6 +5880,7 @@
             const ymd = now.getFullYear() + "-" + (now.getMonth() + 1) + "-" + now.getDate();
             const fileName = `点検_${shopId}_${ymd}_途中${hhmm}_${allData.length}台.csv`;
             saveBlobAsFile(blob, fileName);
+            quickFileSavedCount = allData.length;   // ★V28.5: ここまでファイルに入れた（リマインダーの数え直し）
             const st = document.getElementById("quick-file-status");
             if (st) st.innerText = "最後のファイル保存: " + hhmm.slice(0, 2) + ":" + hhmm.slice(2) + "（" + allData.length + "台）";
             if (typeof showScanToast === "function") showScanToast("📄 ファイルに保存しました（" + allData.length + "台）");
