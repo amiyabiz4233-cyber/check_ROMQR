@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V28.2_202611181100</title>
+    <title>点検スキャナー V28.3</title>
 
     <!-- ★V25.0: 予備保存（IndexedDB）。竹内_点検スキャナーの「念のための二重保存」を移植。画面にボタン等は出さない。
          強制終了で主の保存（localStorage）が書き遅れても、起動時に予備の方が台数が多ければそちらを戻し、そのときだけ知らせる -->
@@ -1175,7 +1175,7 @@
          onmousedown="event.preventDefault(); hidePrevShopToast();"></div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V28.2_202611181100</div>
+        <div class="version-tag">V28.3</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -1193,7 +1193,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V28.2_202611181100</div>
+            <div class="version-tag">V28.3</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号</div>
@@ -1927,6 +1927,37 @@
         //     同じサイト（github.io）なので IndexedDB の "inspector_backup_v1" も共通。キー "sessions" "rom_history" は同じ形式で読み書きする。
         //     竹内版だけが使うキー "csv_backup"・"staff_id" には触らない（宮崎版には CSV 控えの機能が無いため）。
         // ========================================
+        // ========================================
+        // ★V28.3: 保存の永続化申請（navigator.storage.persist）
+        //   なぜ必要か：
+        //     2026-11-19 黒澤さんの iPhone で、いつものアイコンから開いたら
+        //     点検データ（当日分＋前日の富里分）も保存パスワードも全部消えていた。
+        //     アプリは全消去をしないので、iOS が空き容量不足などでこのサイトの保存領域を丸ごと消したと判断。
+        //   persist() を通すと「ユーザーが消すまで消さない」扱いになり、容量不足時の自動削除の対象から外れる。
+        //     ・ホーム画面アイコン（Webアプリ）では iOS 17 以降たいてい許可される
+        //     ・Safari で開く設定では許可されないことがある（その場合は今まで通り。害はない）
+        //   呼ぶタイミング：起動時に1回＋最初のタッチで1回（ユーザー操作が条件のブラウザ向けの保険）。
+        //   画面には何も出さない（普段は意識させない方針）。結果はコンソールと window.__storagePersisted に残す。
+        // ========================================
+        async function requestPersistentStorage() {
+            try {
+                if (!navigator.storage || !navigator.storage.persist) { console.log("persist: 非対応"); return false; }
+                // 既に永続化済みなら何もしない
+                if (navigator.storage.persisted && await navigator.storage.persisted()) {
+                    window.__storagePersisted = true; return true;
+                }
+                const ok = await navigator.storage.persist();   // 申請（ダイアログは出ない）
+                window.__storagePersisted = ok;
+                console.log("persist: " + (ok ? "許可（自動削除されない）" : "不許可（今まで通り）"));
+                return ok;
+            } catch (e) { console.error("persist 失敗:", e); return false; }
+        }
+        // 最初のタッチで念のためもう1回申請（許可済みなら何もしない）
+        document.addEventListener("touchend", function _persistOnce() {
+            document.removeEventListener("touchend", _persistOnce, true);
+            if (!window.__storagePersisted) requestPersistentStorage();
+        }, true);
+
         const IDB_NAME = "inspector_backup_v1", IDB_STORE = "kv";   // ★竹内版と同じ名前（共用のため変えない）
         function idbOpen() {
             return new Promise((res, rej) => {
@@ -2481,6 +2512,7 @@
             if (_ids.length > 0) {
                 showSessionList();
             }
+            requestPersistentStorage();   // ★V28.3: iOSに「この保存を消さないで」と申請（2026-11-19 黒澤さん端末で保存領域ごと消えた対策）
             recoverFromIdbIfNeeded();   // ★V25.0: 主より予備の方が新しい点検があれば戻す（戻した時だけ知らせる）
             recoverRomHistory();        // ★V25.0: ROM の学習を予備・保存中の点検から補う（黙って）
 
