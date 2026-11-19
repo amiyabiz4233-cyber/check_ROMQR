@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>竹内_点検スキャナー V3.2_202611181100</title>
+    <title>竹内_点検スキャナー V3.3</title>
 
     <!-- ★ 竹内_点検スキャナー V1.0（2026-10-07・版数は1.0から。元は点検スキャナー V24.6）: iPhoneのホーム画面で従来版と見分けるため名前を「竹内_点検スキャナー」にした（旧仮称 点検スキャナー2）。 V24.6 に竹内さん改修版（V23.2ベース「新UI wasm」）の機能を取り込んだ別URL版。
          取り込んだもの：消失対策（IndexedDB二重保存・CSV控え・Filesから継続・画面を離れた時の保存・ROM学習の復元）／
@@ -985,7 +985,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">竹内 V3.2_202611181100</div>
+        <div class="version-tag">竹内 V3.3</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号（初回だけ入力・次回から自動）" oninput="s2StaffNote()">
         <div id="s2-staff-note" style="font-size:13px;color:#b45309;font-weight:bold;min-height:1em;"></div>
@@ -1005,7 +1005,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">竹内 V3.2_202611181100</div>
+            <div class="version-tag">竹内 V3.3</div>
 
             <div id="s2-main-shop" style="display:none;"></div>   <!-- ★ 点検スキャナー2 ①: 点検中の店舗名 -->
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -1385,6 +1385,37 @@
         // ★ 12. IndexedDB にも同じ物を書く（2026-10-02 竹内さん: アプリ切替画面から上へスワイプ＝強制終了 → 開き直すと全消え）
         //   localStorage は WebKit が後からまとめてディスクへ書く（書き遅れ）ため、強制終了で失われ得る。IndexedDB はトランザクション
         //   完了時に書き終わるので、こちらを「本物の控え」にする。起動時に localStorage 側が空で IndexedDB にあれば、そこから戻す。
+        // ========================================
+        // ★竹内V3.3: 保存の永続化申請（navigator.storage.persist）
+        //   なぜ必要か：
+        //     2026-11-19 黒澤さんの iPhone で、いつものアイコンから開いたら
+        //     点検データ（当日分＋前日の富里分）も保存パスワードも全部消えていた。
+        //     アプリは全消去をしないので、iOS が空き容量不足などでこのサイトの保存領域を丸ごと消したと判断。
+        //   persist() を通すと「ユーザーが消すまで消さない」扱いになり、容量不足時の自動削除の対象から外れる。
+        //     ・ホーム画面アイコン（Webアプリ）では iOS 17 以降たいてい許可される
+        //     ・Safari で開く設定では許可されないことがある（その場合は今まで通り。害はない）
+        //   呼ぶタイミング：起動時に1回＋最初のタッチで1回（ユーザー操作が条件のブラウザ向けの保険）。
+        //   画面には何も出さない（普段は意識させない方針）。結果はコンソールと window.__storagePersisted に残す。
+        // ========================================
+        async function requestPersistentStorage() {
+            try {
+                if (!navigator.storage || !navigator.storage.persist) { console.log("persist: 非対応"); return false; }
+                // 既に永続化済みなら何もしない
+                if (navigator.storage.persisted && await navigator.storage.persisted()) {
+                    window.__storagePersisted = true; return true;
+                }
+                const ok = await navigator.storage.persist();   // 申請（ダイアログは出ない）
+                window.__storagePersisted = ok;
+                console.log("persist: " + (ok ? "許可（自動削除されない）" : "不許可（今まで通り）"));
+                return ok;
+            } catch (e) { console.error("persist 失敗:", e); return false; }
+        }
+        // 最初のタッチで念のためもう1回申請（許可済みなら何もしない）
+        document.addEventListener("touchend", function _persistOnce() {
+            document.removeEventListener("touchend", _persistOnce, true);
+            if (!window.__storagePersisted) requestPersistentStorage();
+        }, true);
+
         const IDB_NAME = "inspector_backup_v1", IDB_STORE = "kv";
         function idbOpen() {
             return new Promise((res, rej) => {
@@ -2445,6 +2476,7 @@
             const _sessions = pruneOldSessions();
             const _ids = Object.keys(_sessions).filter(id => hasMeaningfulSavedData(_sessions[id]));
             showSessionList(true);   // ★ 竹内専用版 9: 保存が無くても必ず「継続／新規」を聞く（無い事が一目で判る）
+            requestPersistentStorage();   // ★竹内V3.3: iOSに「この保存を消さないで」と申請（2026-11-19 黒澤さん端末で保存領域ごと消えた対策）
             recoverFromIdbIfNeeded();   // ★ 竹内専用版 12: localStorage が空なら IndexedDB から戻す
             recoverRomHistory();   // ★ 竹内専用版 14: ROM の学習を IndexedDB・保存データから戻す
 
