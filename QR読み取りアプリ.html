@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>点検スキャナー V28.3</title>
+    <title>点検スキャナー V28.4</title>
 
     <!-- ★V25.0: 予備保存（IndexedDB）。竹内_点検スキャナーの「念のための二重保存」を移植。画面にボタン等は出さない。
          強制終了で主の保存（localStorage）が書き遅れても、起動時に予備の方が台数が多ければそちらを戻し、そのときだけ知らせる -->
@@ -1110,6 +1110,9 @@
             <h3>📁 保存データを選んで再開</h3>
             <div id="session-list-note">点検開始ごとに保存／7日で自動削除</div>
             <div id="session-list"></div>
+            <!-- ★V28.4: 途中保存したCSVファイルから続きをする（端末内の保存が消えたとき用） -->
+            <input type="file" id="csv-resume-file" accept=".csv,text/csv,text/plain" style="display:none;" onchange="resumeFromCsvFile(this)">
+            <button class="btn-secondary" onclick="document.getElementById('csv-resume-file').click()">📄 CSV ファイルから継続</button>
             <div id="session-list-empty" style="display:none;">保存データはありません</div>
             <button id="session-new-btn" class="btn-primary" onclick="startNewFromList()">＋ 新規で点検開始</button>
             <button class="btn-danger" onclick="clearAllSessions()">🗑 すべて削除</button>
@@ -1175,7 +1178,7 @@
          onmousedown="event.preventDefault(); hidePrevShopToast();"></div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">V28.3</div>
+        <div class="version-tag">V28.4</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号 (5桁)">
         <input type="number" inputmode="numeric" id="shop-id" placeholder="店舗番号 (2桁)" oninput="updateShopName()">
@@ -1188,12 +1191,14 @@
         <div id="s2-engine-state" style="font-size:12px;color:#555;margin-top:2px;"></div>
         <button class="btn-primary" onclick="startApp()">点検開始</button>
         <button class="btn-secondary" onclick="showSessionList(true)" style="margin-top:8px;">📁 保存データを開く（前回の続き）</button>
+        <!-- ★V28.4: 店舗選択画面からも直接CSVファイルで継続できる -->
+        <button class="btn-secondary" onclick="document.getElementById('csv-resume-file').click()" style="margin-top:8px;">📄 途中保存したCSVファイルから継続</button>
         <div class="shop-list-grid" id="display-shop-list"></div>
     </div>
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">V28.3</div>
+            <div class="version-tag">V28.4</div>
 
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                 <div id="status" class="status-badge">① 台番号</div>
@@ -1337,6 +1342,9 @@
 
             <!-- ★ 自動保存ステータス -->
             <div id="autosave-status" class="autosave-status empty">💾 自動保存: 未保存</div>
+            <!-- ★V28.4: ワンタップでファイルへ途中保存（iPhoneが保存領域ごと消しても、このファイルから続きができる） -->
+            <button id="btn-quick-file" class="btn-secondary" onclick="quickSaveFile()" style="margin-top:6px;">📄 途中保存（ファイルへ）</button>
+            <div id="quick-file-status" style="font-size:12px;color:#888;text-align:center;margin-top:2px;"></div>
         </div>
 
         <!-- ★ V22.7: スキャン済みが増えても一番下までスワイプせずに済むよう、
@@ -5814,6 +5822,106 @@
             document.body.removeChild(a);
 
             setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        // ========================================
+        // ★V28.4: 途中保存（ファイルへ）ワンタップ
+        //   なぜ必要か：2026-11-19 黒澤さんの iPhone で、iOS がアプリの保存領域を丸ごと消した（点検＋パスワード）。
+        //     端末内の保存（localStorage・IndexedDB）は全部同じ領域なので、消えると予備も一緒に消える。
+        //     iPhone のWebアプリは勝手にファイルを書けないので、「押したらすぐファイル」にできる最短のボタンを置く。
+        //   ・Safari で開く設定 → 1タップで「ファイル」アプリの「ダウンロード」へ入る
+        //   ・Webアプリとして開く設定 → iOS の保存確認が出る（保存を押す）
+        //   ・Slack の案内は出さない（送信用の「CSV保存」とは別。途中の控え専用）
+        //   ・ファイル名に「途中」「時刻」「台数」を入れて、送信用CSVや他の控えと見分けられるようにする
+        //   ・中身は送信用CSVと同じ形式（社員,店舗,時間,台番,主,ROM,封印 / Shift_JIS）→「CSV ファイルから継続」で読める
+        // ========================================
+        function quickSaveFile() {
+            if (!allData || allData.length === 0) { alert("まだ確定した台がありません"); return; }
+            let blob;
+            try { blob = buildCsvBlobAndFileName().blob; }   // 送信用と同じ中身（文字コード変換ライブラリ未読込ならここで止まる）
+            catch (e) { return; }
+            const now = new Date();
+            const hhmm = String(now.getHours()).padStart(2, "0") + String(now.getMinutes()).padStart(2, "0");
+            const ymd = now.getFullYear() + "-" + (now.getMonth() + 1) + "-" + now.getDate();
+            const fileName = `点検_${shopId}_${ymd}_途中${hhmm}_${allData.length}台.csv`;
+            saveBlobAsFile(blob, fileName);
+            const st = document.getElementById("quick-file-status");
+            if (st) st.innerText = "最後のファイル保存: " + hhmm.slice(0, 2) + ":" + hhmm.slice(2) + "（" + allData.length + "台）";
+            if (typeof showScanToast === "function") showScanToast("📄 ファイルに保存しました（" + allData.length + "台）");
+        }
+        // ========================================
+        // ★V28.4: CSV ファイルから継続（竹内版の resumeFromCsvFile 一式を移植。宮崎版はモード無しなので新台扱い）
+        //   受け付けるのはこのアプリが書き出した列順（社員,店舗,時間,台番,主,ROM,封印）だけ。
+        //   途中保存・送信用どちらのCSVでも読める。読んだら新しい保存（セッション）として続きから始まる。
+        // ========================================
+        const CSV_RESUME_HEADER = "社員,店舗,時間,台番,主,ROM,封印";
+        // 1行の CSV を分解（"a / b" の引用符付きに対応）
+        function splitCsvLine(line) {
+            const out = []; let cur = "", q = false;
+            for (let i = 0; i < line.length; i++) {
+                const c = line[i];
+                if (q) {
+                    if (c === '"') { if (line[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+                    else cur += c;
+                } else if (c === '"') q = true;
+                else if (c === ',') { out.push(cur); cur = ""; }
+                else cur += c;
+            }
+            out.push(cur);
+            return out;
+        }
+        // CSV 本文 → { staffId, shopId, rows[] }
+        function parseInspectionCsv(text) {
+            const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/).filter(l => l.trim() !== "");
+            if (lines.length === 0) throw new Error("空のファイルです");
+            const head = splitCsvLine(lines[0]).map(x => x.trim());
+            if (head.join(",") !== CSV_RESUME_HEADER) throw new Error("このアプリの CSV ではありません（先頭行: " + lines[0].slice(0, 40) + "）");
+            const rows = []; let sid = "", shop = "";
+            for (let i = 1; i < lines.length; i++) {
+                const c = splitCsvLine(lines[i]);
+                if (c.length < 7) continue;            // 列が足りない行は飛ばす
+                if (!sid) { sid = c[0]; shop = c[1]; }  // 社員・店舗は1行目の値
+                const sealsText = c[6] || "";
+                rows.push({
+                    machineId: c[3], mainBoardId: c[4], romId: c[5],
+                    sealsText: sealsText, seals: sealsText ? sealsText.split(" / ").filter(Boolean) : [],
+                    time: c[2]                           // ts は無い → 台/10分は「時間」列から計算される（V25.0）
+                });
+            }
+            if (rows.length === 0) throw new Error("台のデータが 1 行もありません");
+            return { staffId: sid, shopId: shop, rows: rows };
+        }
+        // バイト列 → 文字列（UTF-8 BOM 付きならUTF-8、それ以外は Shift_JIS）
+        function decodeCsvBytes(buf) {
+            const u8 = new Uint8Array(buf);
+            if (u8[0] === 0xEF && u8[1] === 0xBB && u8[2] === 0xBF) return new TextDecoder("utf-8").decode(u8);
+            try {
+                if (typeof Encoding !== 'undefined') return Encoding.convert(u8, { to: 'UNICODE', from: 'SJIS', type: 'string' });
+                return new TextDecoder("shift_jis").decode(u8);
+            } catch (e) { return new TextDecoder("utf-8").decode(u8); }
+        }
+        // ファイル選択 → 読み込み → 新しい保存として復元
+        function resumeFromCsvFile(input) {
+            const f = input && input.files && input.files[0];
+            if (!f) return;
+            const r = new FileReader();
+            r.onload = () => {
+                try {
+                    const p = parseInspectionCsv(decodeCsvBytes(r.result));
+                    if (!confirm("「" + f.name + "」から " + p.rows.length + "台（店舗 " + (p.shopId || "?") + "）を読み込んで続きをしますか？")) { input.value = ""; return; }
+                    activeSessionId = newSessionId();   // 既存の保存は上書きしない（新しい1件として保存）
+                    closeSessionList();
+                    restoreState({
+                        staffId: p.staffId, shopId: p.shopId, allData: p.rows,
+                        currentData: { seals: [] }, currentStep: 1, prevRom1: "", prevRom3: ""
+                    });
+                    saveState();
+                    showScanToast("ファイルから " + p.rows.length + "台を読み込みました（店舗 " + (p.shopId || "?") + "）");
+                } catch (e) { alert("CSV を読めません: " + e.message); }
+                input.value = "";
+            };
+            r.onerror = () => { alert("ファイルを読めませんでした"); input.value = ""; };
+            r.readAsArrayBuffer(f);
         }
 
         async function downloadCSV() {
