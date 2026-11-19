@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>竹内_点検スキャナー V3.3</title>
+    <title>竹内_点検スキャナー V3.4</title>
 
     <!-- ★ 竹内_点検スキャナー V1.0（2026-10-07・版数は1.0から。元は点検スキャナー V24.6）: iPhoneのホーム画面で従来版と見分けるため名前を「竹内_点検スキャナー」にした（旧仮称 点検スキャナー2）。 V24.6 に竹内さん改修版（V23.2ベース「新UI wasm」）の機能を取り込んだ別URL版。
          取り込んだもの：消失対策（IndexedDB二重保存・CSV控え・Filesから継続・画面を離れた時の保存・ROM学習の復元）／
@@ -985,7 +985,7 @@
     <div id="scan-toast">封印を登録しました</div>
 
     <div id="setup-screen" class="card">
-        <div class="version-tag">竹内 V3.3</div>
+        <div class="version-tag">竹内 V3.4</div>
         <h3>初期設定</h3>
         <input type="number" inputmode="numeric" id="staff-id" placeholder="社員番号（初回だけ入力・次回から自動）" oninput="s2StaffNote()">
         <div id="s2-staff-note" style="font-size:13px;color:#b45309;font-weight:bold;min-height:1em;"></div>
@@ -1005,7 +1005,7 @@
 
     <div id="main-app" style="display:none;">
         <div class="card">
-            <div class="version-tag">竹内 V3.3</div>
+            <div class="version-tag">竹内 V3.4</div>
 
             <div id="s2-main-shop" style="display:none;"></div>   <!-- ★ 点検スキャナー2 ①: 点検中の店舗名 -->
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
@@ -1115,6 +1115,9 @@
 
             <!-- ★ 自動保存ステータス -->
             <div id="autosave-status" class="autosave-status empty">💾 自動保存: 未保存</div>
+            <!-- ★竹内V3.4: ワンタップでファイルへ途中保存（iPhoneが保存領域ごと消しても、このファイルから続きができる） -->
+            <button id="btn-quick-file" class="btn-secondary" onclick="quickSaveFile()" style="margin-top:6px;">📄 途中保存（ファイルへ）</button>
+            <div id="quick-file-status" style="font-size:12px;color:#888;text-align:center;margin-top:2px;"></div>
         </div>
 
         <!-- ★ V22.7: スキャン済みが増えても一番下までスワイプせずに済むよう、
@@ -5498,6 +5501,32 @@
             document.body.removeChild(a);
 
             setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+
+        // ========================================
+        // ★竹内V3.4: 途中保存（ファイルへ）ワンタップ
+        //   なぜ必要か：2026-11-19 黒澤さんの iPhone で、iOS がアプリの保存領域を丸ごと消した（点検＋パスワード）。
+        //     端末内の保存（localStorage・IndexedDB）は全部同じ領域なので、消えると予備も一緒に消える。
+        //     iPhone のWebアプリは勝手にファイルを書けないので、「押したらすぐファイル」にできる最短のボタンを置く。
+        //   ・Safari で開く設定 → 1タップで「ファイル」アプリの「ダウンロード」へ入る
+        //   ・Webアプリとして開く設定 → iOS の保存確認が出る（保存を押す）
+        //   ・Slack の案内は出さない（送信用の「CSV保存」とは別。途中の控え専用）
+        //   ・ファイル名に「途中」「時刻」「台数」を入れて、送信用CSVや他の控えと見分けられるようにする
+        //   ・中身は送信用CSVと同じ形式（社員,店舗,時間,台番,主,ROM,封印 / Shift_JIS）→「CSV ファイルから継続」で読める
+        // ========================================
+        function quickSaveFile() {
+            if (!allData || allData.length === 0) { alert("まだ確定した台がありません"); return; }
+            let blob;
+            try { blob = buildCsvBlobAndFileName().blob; }   // 送信用と同じ中身（文字コード変換ライブラリ未読込ならここで止まる）
+            catch (e) { return; }
+            const now = new Date();
+            const hhmm = String(now.getHours()).padStart(2, "0") + String(now.getMinutes()).padStart(2, "0");
+            const ymd = now.getFullYear() + "-" + (now.getMonth() + 1) + "-" + now.getDate();
+            const fileName = `点検_${shopId}_${ymd}_途中${hhmm}_${allData.length}台.csv`;
+            saveBlobAsFile(blob, fileName);
+            const st = document.getElementById("quick-file-status");
+            if (st) st.innerText = "最後のファイル保存: " + hhmm.slice(0, 2) + ":" + hhmm.slice(2) + "（" + allData.length + "台）";
+            if (typeof showScanToast === "function") showScanToast("📄 ファイルに保存しました（" + allData.length + "台）");
         }
 
         async function downloadCSV() {
